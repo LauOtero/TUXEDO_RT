@@ -18,7 +18,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "compiler.h"  /* __visible, __hot, __cold, likely/unlikely, __aligned */
-#include "crc_utils.h" /* CRC_CACHE_LINE_SIZE */
+#include "ultracrc.h" /* ULTRACRC_CACHE_LINE_SIZE */
 
 #ifdef __cplusplus
 extern "C" {
@@ -39,7 +39,7 @@ extern "C" {
 #define QUADRATIC_DEV         11      /* Quadratic deviation constant for add-range */
 
 /* Cache-line alignment for hot-path structures */
-#define STEP_COMPRESS_ALIGN   CRC_CACHE_LINE_SIZE  /* Typically 64 bytes */
+#define STEP_COMPRESS_ALIGN   ULTRACRC_CACHE_LINE_SIZE  /* Typically 64 bytes */
 
 /*********************************************************************
  * Opaque Types & Forward Declarations

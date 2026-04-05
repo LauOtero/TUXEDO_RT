@@ -8,7 +8,7 @@
  #include <stdlib.h> // malloc
  #include <string.h> // memset
  #include "compiler.h" // __visible
- #include "crc_utils.h" // crc16_ccitt_compute etc
+ #include "ultracrc.h" // ultracrc16_ccitt_compute etc
  #include "msgblock.h" // message_alloc
  #include "pyhelper.h" // errorf
  
@@ -23,7 +23,7 @@
  uint16_t __visible
  msgblock_crc16_ccitt(uint8_t *buf, int len)
  {
-     return crc16_ccitt_compute(buf, (size_t)len, 0xffff);
+     return ultracrc16_ccitt_compute(buf, (size_t)len, 0xffff);
  }
  
  // Verify a buffer starts with a valid mcu message

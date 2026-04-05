@@ -23,9 +23,9 @@
  *
  * ── RT startup sequence ───────────────────────────────────────────────────────
  *  1. trapq_pool_warmup()        — allocate slab, build free-list, pre-fault
- *  2. crc_utils_warmup()         — CRC dispatch table
- *  3. crc_utils_lock_memory()    — mlockall
- *  4. crc_utils_set_rt_scheduler() — SCHED_FIFO
+ *  2. ultracrc_warmup()          — CRC dispatch table
+ *  3. ultracrc_lock_memory()     — mlockall
+ *  4. ultracrc_set_rt_scheduler() — SCHED_FIFO
  *  Then call trapq_alloc() / trapq_append() freely — zero malloc in RT loop.
  */
 

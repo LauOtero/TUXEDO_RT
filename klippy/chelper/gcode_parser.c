@@ -23,7 +23,7 @@
 #include <string.h>
 #include <stdalign.h>
 #include <stdbool.h>
-#include "crc_utils.h"
+#include "ultracrc.h"
 #include "compiler.h"
 
 #define GCODE_PARSER_VERSION "1.9.0"
@@ -129,7 +129,7 @@ __hot static int gp_parse_scalar(const uint8_t *restrict line, int32_t len,
 
     /* 6. Compute CRC-32 */
     const uint8_t *crc_end = (out->star_pos >= 0) ? (line + out->star_pos) : p;
-    out->crc32 = crc32_compute(line, (size_t)(crc_end - line), 0);
+    out->crc32 = ultracrc32_compute(line, (size_t)(crc_end - line), 0);
 
     /* 7. Validate checksum if present */
     if (out->star_pos >= 0 && out->star_pos + 1 < len) {
@@ -221,7 +221,7 @@ __hot static int gp_parse_avx512(const uint8_t *restrict line, int32_t len,
 
     /* 6. CRC & Checksum */
     const uint8_t *crc_end = (out->star_pos >= 0) ? (line + out->star_pos) : (line + pos);
-    out->crc32 = crc32_compute(line, (size_t)(crc_end - line), 0);
+    out->crc32 = ultracrc32_compute(line, (size_t)(crc_end - line), 0);
 
     if (out->star_pos >= 0 && out->star_pos + 1 < len) {
         const uint8_t *chk_ptr = line + out->star_pos + 1;
@@ -313,7 +313,7 @@ __hot int parse_gcode_line_fast(const uint8_t *line, int32_t len, GCodeParseResu
 __cold void gcode_parser_warmup(void) {
     volatile uint8_t dummy = GCODE_CHAR_CLASS[0];
     (void)dummy;
-    crc_utils_warmup();
+    ultracrc_warmup();
 #if defined(__linux__) && defined(__GNUC__)
     void (*fp)(void) = (void (*)(void))parse_gcode_line_fast;
     __builtin_prefetch(fp, 0, 3);
