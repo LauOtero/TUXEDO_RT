@@ -97,6 +97,7 @@ typedef struct {
 extern const conn_backend_ops_t conn_serial_backend;
 extern const conn_backend_ops_t conn_can_backend;
 extern const conn_backend_ops_t conn_ethertux_backend;
+extern const conn_backend_ops_t conn_rs485_backend;
 
 /* =========================================================================
  * Factory / Dispatcher

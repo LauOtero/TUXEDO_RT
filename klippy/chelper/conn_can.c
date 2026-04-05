@@ -22,6 +22,8 @@
 #include <sys/ioctl.h>
 #include <net/if.h>
 #include <linux/sockios.h>
+#include <stdlib.h>
+#include <stdarg.h>
 
 /* ─── CAN Frame Definitions (compatibility layer) ───────────────────────── */
 #ifndef CAN_MTU
@@ -163,7 +165,7 @@ __attribute__((cold)) static int can_init(struct conn_manager *cm) {
     /* Enter autonegotiation idle state */
     can_an_enter(ctx, AUTONEG_STATE_IDLE_WAIT, 0.0);
     
-    /* Optional debug file */
+    /* Optional debug file setup */
     const char *debug_path = getenv("CONN_CAN_DEBUG");
     if (debug_path && !ctx->debug_file) {
         ctx->debug_file = fopen(debug_path, "w");

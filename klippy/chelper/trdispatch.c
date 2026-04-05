@@ -11,7 +11,7 @@
 #include "list.h" // list_add_tail
 #include "pollreactor.h" // PR_NEVER
 #include "pyhelper.h" // report_errno
-#include "serialqueue.h" // serialqueue_add_fastreader
+#include "conn_manager.h" // conn_add_fastreader
 
 struct trdispatch {
     struct list_head tdm_list;
@@ -42,7 +42,7 @@ struct trdispatch_mcu {
     struct fastreader fr;
     struct trdispatch *td;
     struct list_node node;
-    struct serialqueue *sq;
+    struct conn_manager *cm;
     struct command_queue *cq;
     uint32_t trsync_oid, set_timeout_msgtag, trigger_msgtag;
 
@@ -60,7 +60,7 @@ send_trsync_trigger(struct trdispatch_mcu *tdm)
         tdm->trigger_msgtag, tdm->trsync_oid, tdm->td->dispatch_reason
     };
     struct queue_message *qm = message_alloc_and_encode(msg, ARRAY_SIZE(msg));
-    serialqueue_send_one(tdm->sq, tdm->cq, qm);
+    conn_send_one(tdm->cm, tdm->cq, qm);
 }
 
 // Send: trsync_set_timeout oid=%c clock=%u
@@ -72,7 +72,7 @@ send_trsync_set_timeout(struct trdispatch_mcu *tdm)
     };
     struct queue_message *qm = message_alloc_and_encode(msg, ARRAY_SIZE(msg));
     qm->req_clock = tdm->expire_clock;
-    serialqueue_send_one(tdm->sq, tdm->cq, qm);
+    conn_send_one(tdm->cm, tdm->cq, qm);
 }
 
 // Handle a trsync_state message (callback from serialqueue fastreader)
@@ -107,7 +107,7 @@ handle_trsync_state(struct fastreader *fr, uint8_t *data, int len)
     }
 
     // mcu is still working okay - update last_status_clock
-    serialqueue_get_clock_est(tdm->sq, &tdm->ce);
+    conn_get_clock_est(tdm->cm, &tdm->ce);
     tdm->last_status_clock = clock_from_clock32(&tdm->ce, clock);
 
     // Determine minimum acknowledged time among all mcus
@@ -159,7 +159,7 @@ trdispatch_start(struct trdispatch *td, uint32_t dispatch_reason)
     // Register handle_trsync_state message parser for each mcu
     struct trdispatch_mcu *tdm;
     list_for_each_entry(tdm, &td->tdm_list, node) {
-        serialqueue_add_fastreader(tdm->sq, &tdm->fr);
+        conn_add_fastreader(tdm->cm, &tdm->fr);
     }
 }
 
@@ -178,7 +178,7 @@ trdispatch_stop(struct trdispatch *td)
     // Unregister handle_trsync_state message parsers
     struct trdispatch_mcu *tdm;
     list_for_each_entry(tdm, &td->tdm_list, node) {
-        serialqueue_rm_fastreader(tdm->sq, &tdm->fr);
+        conn_rm_fastreader(tdm->cm, &tdm->fr);
     }
 }
 
@@ -196,7 +196,7 @@ trdispatch_alloc(void)
 
 // Create a new 'struct trdispatch_mcu' object
 struct trdispatch_mcu *
-trdispatch_mcu_alloc(struct trdispatch *td, struct serialqueue *sq
+trdispatch_mcu_alloc(struct trdispatch *td, struct conn_manager *cm
                      , struct command_queue *cq, uint32_t trsync_oid
                      , uint32_t set_timeout_msgtag, uint32_t trigger_msgtag
                      , uint32_t state_msgtag)
@@ -204,7 +204,7 @@ trdispatch_mcu_alloc(struct trdispatch *td, struct serialqueue *sq
     struct trdispatch_mcu *tdm = malloc(sizeof(*tdm));
     memset(tdm, 0, sizeof(*tdm));
 
-    tdm->sq = sq;
+    tdm->cm = cm;
     tdm->cq = cq;
     tdm->trsync_oid = trsync_oid;
     tdm->set_timeout_msgtag = set_timeout_msgtag;
@@ -239,7 +239,7 @@ trdispatch_mcu_setup(struct trdispatch_mcu *tdm
     tdm->expire_clock = expire_clock;
     tdm->expire_ticks = expire_ticks;
     tdm->min_extend_ticks = min_extend_ticks;
-    serialqueue_get_clock_est(tdm->sq, &tdm->ce);
+    conn_get_clock_est(tdm->cm, &tdm->ce);
     rt_spin_unlock(&td->lock);
 }
 

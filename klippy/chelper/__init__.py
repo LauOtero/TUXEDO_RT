@@ -695,8 +695,8 @@ def build_gcc_compile_args():
                 flags.append(f)
         logging.info("GCC 15+: advanced optimizations applied (LTO, IPA-PTA, I-cache alignment)")
     
-    # Link EtherCAT master if conn_ethertux.c is present in sources
-    if any(f.endswith("conn_ethertux.c") for f in SOURCE_FILES):
+    # Link EtherCAT master if conn_ethertux.c is present in sources and ethercat is installed
+    if any(f.endswith("conn_ethertux.c") for f in SOURCE_FILES) and os.path.exists("/usr/include/ethercat.h"):
         linker_flags.append("-lethercat")
         logging.info("Linking IGH EtherCAT Master library (-lethercat)")
     

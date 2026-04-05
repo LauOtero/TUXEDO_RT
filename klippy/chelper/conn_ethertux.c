@@ -6,17 +6,39 @@
  */
 #include "conn_internal.h"
 #include "conn_backend.h"
-#include <ethercat.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
+#include <stdlib.h>
 #include <sys/mman.h>
+#include "pyhelper.h"
 
+#if __has_include(<ethercat.h>)
+#include <ethercat.h>
 /* ─── IGH EtherCAT Master Wrappers ────────────────────────────────────── */
 typedef struct ec_master ec_master_t;
 typedef struct ec_domain ec_domain_t;
 typedef struct ec_slave_config ec_slave_config_t;
+#else
+/* Dummy implementations for systems without IGH EtherCAT Master */
+typedef struct ec_master ec_master_t;
+typedef struct ec_domain ec_domain_t;
+typedef struct ec_slave_config ec_slave_config_t;
+static inline ec_master_t *ecrt_request_master(unsigned int master_index) { return NULL; }
+static inline void ecrt_release_master(ec_master_t *master) {}
+static inline ec_domain_t *ecrt_master_create_domain(ec_master_t *master) { return NULL; }
+static inline void ecrt_domain_release(ec_domain_t *domain) {}
+static inline void ecrt_master_receive(ec_master_t *master) {}
+static inline void ecrt_domain_process(ec_domain_t *domain) {}
+static inline uint8_t *ecrt_domain_data(ec_domain_t *domain) { return NULL; }
+static inline void ecrt_domain_queue(ec_domain_t *domain) {}
+static inline void ecrt_master_send(ec_master_t *master) {}
+static inline ec_slave_config_t *ecrt_master_slave_config(ec_master_t *master, uint16_t alias, uint16_t position, uint32_t vendor_id, uint32_t product_code) { return NULL; }
+static inline void ecrt_slave_config_dc(ec_slave_config_t *sc, uint16_t assign_activate, uint32_t sync0_cycle_time, uint32_t sync0_shift_time, uint32_t sync1_cycle_time, uint32_t sync1_shift_time) {}
+static inline int ecrt_master_activate(ec_master_t *master) { return -1; }
+static inline void ecrt_master_sync(ec_master_t *master) {}
+#endif
 
 /* ─── Ethertux Context Helpers ────────────────────────────────────────── */
 static ethertux_ctx_t *ethertux_ctx_alloc(void) {
@@ -46,7 +68,7 @@ __attribute__((cold)) static int ethertux_init(struct conn_manager *cm) {
     /* Request IGH Master */
     ec_master_t *master = ecrt_request_master(0); /* Master index 0 */
     if (!master) {
-        logging_callback("ethertux: failed to request IGH master");
+        errorf("ethertux: failed to request IGH master");
         return -ENODEV;
     }
     cm->ethertux->master_handle = master;
@@ -54,7 +76,7 @@ __attribute__((cold)) static int ethertux_init(struct conn_manager *cm) {
     /* Create Domain */
     ec_domain_t *domain = ecrt_master_create_domain(master);
     if (!domain) {
-        logging_callback("ethertux: failed to create domain");
+        errorf("ethertux: failed to create domain");
         ecrt_release_master(master);
         return -ENOMEM;
     }
@@ -65,7 +87,7 @@ __attribute__((cold)) static int ethertux_init(struct conn_manager *cm) {
     
     /* RT Memory Locking */
     if (mlockall(MCL_CURRENT | MCL_FUTURE) == 0)
-        logging_callback("ethertux: memory locked for RT");
+        errorf("ethertux: memory locked for RT");
     
     return 0;
 }
@@ -138,7 +160,8 @@ __attribute__((hot)) static void ethertux_autoneg_tick(struct conn_manager *cm, 
     
     ec_master_t *master = cm->ethertux->master_handle;
     ec_slave_config_t *sc = ecrt_master_slave_config(
-        master, 0, cm->ethertux->alias, cm->ethertux->position);
+        master, cm->ethertux->alias, cm->ethertux->position,
+        cm->ethertux->vendor_id, cm->ethertux->product_id);
     if (!sc) return;
     
     /* Configure DC Sync */
@@ -151,7 +174,7 @@ __attribute__((hot)) static void ethertux_autoneg_tick(struct conn_manager *cm, 
     /* Activate configuration */
     if (ecrt_master_activate(master) == 0) {
         cm->ethertux->slave_online = true;
-        logging_callback("ethertux: slave %u:%u online", cm->ethertux->alias, cm->ethertux->position);
+        errorf("ethertux: slave %u:%u online", cm->ethertux->alias, cm->ethertux->position);
     }
 }
 
@@ -179,14 +202,14 @@ static int ethertux_pin_irq(struct conn_manager *cm, int cpu_id) {
     if (!cm->ethertux) return -ENODEV;
     /* IGH: ecrt_master_set_irq_affinity() if available in version */
     /* Fallback: set CPU affinity for master thread */
-    return rt_set_cpu_affinity(cpu_id);
+    return conn_pin_to_cpu(cm, cpu_id);
 }
 
 static int ethertux_set_irq_affinity(struct conn_manager *cm, const int *cpu_list, int count) {
     if (!cm->ethertux || !cpu_list || count <= 0) return -EINVAL;
     /* IGH: ecrt_master_set_irq_cpu_mask() for multi-IRQ systems */
     /* For now, pin to first CPU in list */
-    return rt_set_cpu_affinity(cpu_list[0]);
+    return conn_pin_to_cpu(cm, cpu_list[0]);
 }
 
 /* ─── Backend Registration ────────────────────────────────────────────── */

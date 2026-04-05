@@ -27,6 +27,7 @@
 #include "conn_manager.h"
 #include "conn_internal.h"
 #include "conn_backend.h"
+#include "ultracrc.h"
 
 /* ─── Constants ───────────────────────────────────────────────────────── */
 #define CONNPF_FD       0
@@ -204,16 +205,32 @@ __attribute__((hot)) static void input_event(struct conn_manager *cm, double eve
 }
 
 /* ─── Background Thread ───────────────────────────────────────────────── */
+static void kick_event(struct conn_manager *cm, double eventtime) {
+    (void)eventtime;
+    char dummy[4096];
+    int ret = read(cm->tx_sched.pipe_fds[0], dummy, sizeof(dummy));
+    if (ret < 0 && errno != EAGAIN) report_errno("pipe read", ret);
+    pollreactor_update_timer(cm->pr, CONNPT_COMMAND, PR_NOW);
+}
+
+static void retransmit_event(struct conn_manager *cm, double eventtime) {
+    (void)cm; (void)eventtime;
+}
+
+static void command_event(struct conn_manager *cm, double eventtime) {
+    (void)cm; (void)eventtime;
+}
+
 static void *background_thread(void *data) {
     struct conn_manager *cm = data;
     set_thread_name(cm->mcu_name);
     
     /* RT Pinning (if configured) */
     if (cm->rt_cpu_id >= 0) {
-        if (rt_set_cpu_affinity(cm->rt_cpu_id) == 0)
-            logging_callback("conn: pinned to CPU %d", cm->rt_cpu_id);
+        if (ultracrc_pin_to_cpu(cm->rt_cpu_id) == 0)
+            errorf("conn: pinned to CPU %d", cm->rt_cpu_id);
         if (cm->rt_priority > 0)
-            rt_set_fifo_priority(cm->rt_priority);
+            ultracrc_set_rt_scheduler(cm->rt_priority);
     }
     
     pollreactor_run(cm->pr);
@@ -487,14 +504,14 @@ __visible void conn_set_ethertux_params(struct conn_manager *cm, uint16_t alias,
 __visible int conn_pin_to_cpu(struct conn_manager *cm, int cpu_id) {
     if (cpu_id < 0) return -1;
     cm->rt_cpu_id = cpu_id;
-    if (cm->tid) return rt_set_cpu_affinity(cpu_id);
+    if (cm->tid) return ultracrc_pin_to_cpu(cpu_id);
     return 0;
 }
 
 __visible int conn_set_fifo_priority(struct conn_manager *cm, int priority) {
     if (priority < 1 || priority > 99) return -1;
     cm->rt_priority = priority;
-    if (cm->tid) return rt_set_fifo_priority(priority);
+    if (cm->tid) return ultracrc_set_rt_scheduler(priority);
     return 0;
 }
 

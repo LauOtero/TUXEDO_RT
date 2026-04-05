@@ -18,7 +18,7 @@
 #include "compiler.h" // __visible
 #include "pyhelper.h" // set_thread_name
 #include "itersolve.h" // itersolve_generate_steps
-#include "serialqueue.h" // struct queue_message
+#include "conn_manager.h" // struct queue_message
 #include "stepcompress.h" // stepcompress_flush
 #include "steppersync.h" // steppersync_alloc
 #include "trapq.h" // trapq_check_sentinels
@@ -219,7 +219,7 @@ struct steppersync {
     // List node for storage in steppersyncmgr list
     struct list_node ssm_node;
     // Serial port
-    struct serialqueue *sq;
+    struct conn_manager *cm;
     struct command_queue *cq;
     // The syncemitters that generate messages on this mcu
     struct list_head se_list;
@@ -242,15 +242,15 @@ steppersync_alloc_syncemitter(struct steppersync *ss, char name[16]
 }
 
 // Fill information on mcu move queue
-void __visible
-steppersync_setup_movequeue(struct steppersync *ss, struct serialqueue *sq
+void
+steppersync_setup_movequeue(struct steppersync *ss, struct conn_manager *cm
                             , int move_num)
 {
-    serialqueue_free_commandqueue(ss->cq);
+    conn_free_commandqueue(ss->cq);
     free(ss->move_clocks);
 
-    ss->sq = sq;
-    ss->cq = serialqueue_alloc_commandqueue();
+    ss->cm = cm;
+    ss->cq = conn_alloc_commandqueue();
 
     ss->move_clocks = malloc(sizeof(*ss->move_clocks)*move_num);
     memset(ss->move_clocks, 0, sizeof(*ss->move_clocks)*move_num);
@@ -336,7 +336,7 @@ steppersync_flush(struct steppersync *ss, uint64_t move_clock)
 
     // Transmit commands
     if (!list_empty(&msgs))
-        serialqueue_send_batch(ss->sq, ss->cq, &msgs);
+        conn_send_batch(ss->cm, ss->cq, &msgs);
 }
 
 
@@ -369,7 +369,7 @@ steppersyncmgr_free(struct steppersyncmgr *ssm)
             &ssm->ss_list, struct steppersync, ssm_node);
         list_del(&ss->ssm_node);
         free(ss->move_clocks);
-        serialqueue_free_commandqueue(ss->cq);
+        conn_free_commandqueue(ss->cq);
         while (!list_empty(&ss->se_list)) {
             struct syncemitter *se = list_first_entry(
                 &ss->se_list, struct syncemitter, ss_node);

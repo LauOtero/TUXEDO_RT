@@ -3,7 +3,7 @@ ultracrc.c - Ultra-High-Performance CRC Engine Core
 Implements: Multi-arch dispatch, hardware acceleration, RT utilities
 SPDX-License-Identifier: GPL-3.0-or-later
 */
-#define _GNU_SOURCE
+
 #include "ultracrc.h"
 #include "ultracrc_tables.h"
 #include <string.h>

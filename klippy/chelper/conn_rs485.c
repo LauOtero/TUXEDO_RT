@@ -10,6 +10,7 @@
 
 #include "conn_internal.h"
 #include "conn_backend.h"
+#include "pyhelper.h"
 #include <termios.h>
 #include <unistd.h>
 #include <errno.h>
@@ -18,6 +19,10 @@
 #include <stdio.h>
 #include <sys/ioctl.h>
 #include <linux/serial.h>
+
+#ifndef SER_RS485_USE_GPIO
+#define SER_RS485_USE_GPIO (1 << 5)
+#endif
 
 /* ─── RS-485 Backend Context (Private per-connection state) ─────────────── */
 typedef struct {
@@ -55,7 +60,7 @@ __attribute__((cold)) static int rs485_init(struct conn_manager *cm) {
     if (ioctl(cm->fd, TIOCGRS485, &ctx->orig_config) < 0) {
         ctx->is_hw_rs485 = false;
         memset(&ctx->active_config, 0, sizeof(ctx->active_config));
-        logging_callback("rs485: TIOCGRS485 not supported, falling back to manual DE/RE");
+        errorf("rs485: TIOCGRS485 not supported, falling back to manual DE/RE");
     } else {
         ctx->is_hw_rs485 = true;
         memcpy(&ctx->active_config, &ctx->orig_config, sizeof(ctx->active_config));
@@ -70,7 +75,7 @@ __attribute__((cold)) static int rs485_init(struct conn_manager *cm) {
         ctx->active_config.delay_rts_after_send = 0;
         
         if (ioctl(cm->fd, TIOCSRS485, &ctx->active_config) < 0) {
-            logging_callback("rs485: TIOCSRS485 failed, disabling HW mode");
+            errorf("rs485: TIOCSRS485 failed, disabling HW mode");
             ctx->is_hw_rs485 = false;
         }
     }

@@ -3,6 +3,14 @@
 __pycache__/
 *.py[cod]
 *$py.class
+
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+.python
 /.pytest_cache
 
 # Entornos virtuales (Virtual Environments)

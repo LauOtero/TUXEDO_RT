@@ -8,7 +8,7 @@
 /* ─── Constants ───────────────────────────────────────────────────────── */
 #define MAX_CLOCK               0x7fffffffffffffffLL
 #define BACKGROUND_PRIORITY_CLOCK 0x7fffffff00000000LL
-#define MESSAGE_MAX             4096
+#define MAX_MCU_NAME_LEN        16
 
 /* ─── Forward Declarations ────────────────────────────────────────────── */
 struct conn_manager;

@@ -23,7 +23,7 @@
 #include <string.h>
 
 #include "pyhelper.h"
-#include "serialqueue.h"
+#include "conn_manager.h"
 #include "stepcompress.h"  /* ← RT-optimized header with cache-aligned layout */
 
 // Internal Helpers (RT-Deterministic Math)

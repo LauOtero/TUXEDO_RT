@@ -16,14 +16,14 @@ void __visible syncemitter_queue_msg(struct syncemitter *se, uint64_t req_clock
 struct steppersync;
 struct syncemitter * steppersync_alloc_syncemitter(
     struct steppersync *ss, char name[16], int alloc_stepcompress);
-void __visible steppersync_setup_movequeue(struct steppersync *ss, struct serialqueue *sq
+struct conn_manager;
+void __visible steppersync_setup_movequeue(struct steppersync *ss, struct conn_manager *cm
                                  , int move_num);
 void __visible steppersync_set_time(struct steppersync *ss, double time_offset
                           , double mcu_freq);
 
 struct steppersyncmgr * steppersyncmgr_alloc(void);
 void __visible steppersyncmgr_free(struct steppersyncmgr *ssm);
-struct serialqueue;
 struct steppersync * steppersyncmgr_alloc_steppersync(
     struct steppersyncmgr *ssm);
 int32_t __visible steppersyncmgr_gen_steps(struct steppersyncmgr *ssm, double flush_time

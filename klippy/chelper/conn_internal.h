@@ -32,14 +32,14 @@ typedef struct {
 } CACHE_ALIGN tx_shadow_t;
 
 /* ─── Message Queues ──────────────────────────────────────────────────── */
-typedef struct {
+typedef struct message_sub_queue {
     struct list_head msg_queue;
     struct list_node node;
 } message_sub_queue_t;
 
-typedef struct {
+struct command_queue {
     message_sub_queue_t ready, upcoming;
-} command_queue_t;
+};
 
 /* ─── Receiver State ──────────────────────────────────────────────────── */
 typedef struct {
@@ -151,8 +151,5 @@ struct conn_manager {
 } CACHE_ALIGN;
 
 /* ─── Internal Helpers ────────────────────────────────────────────────── */
-static __always_inline void conn_debug_queue_alloc(struct list_head *root, int count);
-static __always_inline void conn_kick_bg_thread(struct conn_manager *cm);
-static __always_inline double conn_calc_bittime(struct conn_manager *cm, uint32_t bytes);
 
 #endif /* CONN_INTERNAL_H */
