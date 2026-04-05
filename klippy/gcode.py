@@ -191,7 +191,7 @@ class GCodeDispatch:
                 self._c_parser = lib.parse_gcode_line_fast
                 self._ffi = ffi
                 logging.info("C-accelerated G-code parser & Hardware CRC enabled")
-            elif ffi and hasattr(lib, 'crc32_compute'):
+            elif ffi and hasattr(lib, 'ultracrc32_compute'):
                 # Fallback: Parser is Python, but we use Hardware CRC
                 logging.info("Hardware CRC available, using Python parser fallback")
         except Exception:
@@ -423,8 +423,8 @@ class GCodeDispatch:
             try:
                 from .chelper import get_ffi
                 _, lib = get_ffi()
-                if hasattr(lib, 'crc32_compute'):
-                    crc32_func = lib.crc32_compute
+                if hasattr(lib, 'ultraccrc32_compute'):
+                    crc32_func = lib.ultracrc32_compute
             except:
                 pass
 

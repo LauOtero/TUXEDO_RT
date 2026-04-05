@@ -380,7 +380,7 @@ class FastCrc:
         self._init_ffi()
         if self._ffi_lib is not None:
             try:
-                return int(self._ffi_lib.crc16_ccitt_compute(data, len(data), crc))
+                return int(self._ffi_lib.ultracrc16_ccitt_compute(data, len(data), crc))
             except Exception:
                 # Fallback to pure Python implementation on failure
                 pass
