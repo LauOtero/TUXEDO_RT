@@ -1,0 +1,30 @@
+# =============================================================================
+# requirements.txt
+# Compatible with Python 3.8 – 3.12+
+# =============================================================================
+
+# --- CORE KLIPPER (REQUIRED) ---
+# Automatically install the correct package version for each Python version
+greenlet>=2.0.2,<3.0 ; python_version < '3.12'
+greenlet>=3.1.1 ; python_version >= '3.12'
+cffi>=1.14.6,<1.15 ; python_version < '3.12'
+cffi>=1.17.1 ; python_version >= '3.12'
+Jinja2>=2.11.3
+markupsafe>=1.1.1
+pyserial>=3.4
+python-can>=3.3.4
+setuptools>=78.1.1 ; python_version >= '3.12'
+msgspec>=0.19.0 ; python_version >= '3.9'
+
+# --- INPUT SHAPING / ADXL345 (RECOMMENDED) ---
+numpy>=1.21.0
+scipy>=1.7.0
+
+# --- ADDITIONAL TOOLS (OPTIONAL) ---
+# matplotlib>=3.4.0  # Uncomment if you need to display graphs
+
+# --- IMPORTANT NOTES ---
+# 1. Install in a virtual environment: python3 -m venv ~/klippy_venv
+# 2. Activate environment: source ~/klippy_venv/bin/activate
+# 3. Install dependencies: pip install -r requirements.txt
+# 4. DO NOT update pip before installing (pip>=25 may cause conflicts) [[2]]

@@ -1,0 +1,10 @@
+{
+    "startup": {
+        "starting": "Iniciando núcleo TUXEDO_RT...",
+        "ready": "TUXEDO_RT está listo."
+    },
+    "errors": {
+        "generic": "Ha ocurrido un error: {error}",
+        "mcu_lost": "¡Se ha perdido la comunicación con la MCU!"
+    }
+}

@@ -1,0 +1,10 @@
+{
+    "startup": {
+        "starting": "Starting TUXEDO_RT Core...",
+        "ready": "TUXEDO_RT is ready."
+    },
+    "errors": {
+        "generic": "An error occurred: {error}",
+        "mcu_lost": "Communication with MCU lost!"
+    }
+}
