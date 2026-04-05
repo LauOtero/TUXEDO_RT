@@ -14,31 +14,135 @@
 #include <sys/mman.h>
 #include "pyhelper.h"
 
-#if __has_include(<ethercat.h>)
+/* ─── IGH EtherCAT Master Header ───────────────────────────────────────── */
+#if __has_include(<ecrt.h>)
+#include <ecrt.h>
+#elif __has_include(<ethercat.h>)
 #include <ethercat.h>
-/* ─── IGH EtherCAT Master Wrappers ────────────────────────────────────── */
-typedef struct ec_master ec_master_t;
-typedef struct ec_domain ec_domain_t;
-typedef struct ec_slave_config ec_slave_config_t;
 #else
-/* Dummy implementations for systems without IGH EtherCAT Master */
-typedef struct ec_master ec_master_t;
-typedef struct ec_domain ec_domain_t;
-typedef struct ec_slave_config ec_slave_config_t;
-static inline ec_master_t *ecrt_request_master(unsigned int master_index) { return NULL; }
-static inline void ecrt_release_master(ec_master_t *master) {}
-static inline ec_domain_t *ecrt_master_create_domain(ec_master_t *master) { return NULL; }
-static inline void ecrt_domain_release(ec_domain_t *domain) {}
-static inline void ecrt_master_receive(ec_master_t *master) {}
-static inline void ecrt_domain_process(ec_domain_t *domain) {}
-static inline uint8_t *ecrt_domain_data(ec_domain_t *domain) { return NULL; }
-static inline void ecrt_domain_queue(ec_domain_t *domain) {}
-static inline void ecrt_master_send(ec_master_t *master) {}
-static inline ec_slave_config_t *ecrt_master_slave_config(ec_master_t *master, uint16_t alias, uint16_t position, uint32_t vendor_id, uint32_t product_code) { return NULL; }
-static inline void ecrt_slave_config_dc(ec_slave_config_t *sc, uint16_t assign_activate, uint32_t sync0_cycle_time, uint32_t sync0_shift_time, uint32_t sync1_cycle_time, uint32_t sync1_shift_time) {}
-static inline int ecrt_master_activate(ec_master_t *master) { return -1; }
-static inline void ecrt_master_sync(ec_master_t *master) {}
+/* Fallback to local header */
+#include "ecrt.h"
 #endif
+
+/* ─── Type Aliases for IGH EtherCAT Master ────────────────────────────── */
+typedef ec_master_t ec_master_t;
+typedef ec_domain_t ec_domain_t;
+typedef ec_slave_config_t ec_slave_config_t;
+
+/* ─── Klipper Protocol over EtherCAT Mapping ──────────────────────────── */
+/* 
+ * Klipper protocol messages are mapped to dedicated PDO entries:
+ * - RxPDO (Master -> Slave): Klipper commands from host to MCU
+ * - TxPDO (Slave -> Master): Klipper responses from MCU to host
+ * 
+ * PDO Mapping Configuration:
+ *   Sync Manager 2 (Output): RxPDO at index 0x1600
+ *   Sync Manager 3 (Input):  TxPDO at index 0x1A00
+ * 
+ * Each PDO entry contains:
+ *   - [0-1]: Message length (uint16_t)
+ *   - [2-3]: Sequence number (uint16_t)  
+ *   - [4..]: Payload data (up to ETHERTUX_PDU_MAX_SIZE - 4 bytes)
+ */
+
+#define KLIPPER_PDO_RX_INDEX    0x1600  /* RxPDO mapping index */
+#define KLIPPER_PDO_TX_INDEX    0x1A00  /* TxPDO mapping index */
+#define KLIPPER_PDO_LENGTH_OFS  0       /* Length field offset */
+#define KLIPPER_PDO_SEQ_OFS     2       /* Sequence number offset */
+#define KLIPPER_PDO_DATA_OFS    4       /* Payload data offset */
+#define KLIPPER_PDO_HEADER_SIZE 4       /* Header size (length + seq) */
+
+/* ─── Ethertux Context Structure ──────────────────────────────────────── */
+struct ethertux_ctx {
+    ec_master_t *master_handle;         /* IGH master instance */
+    ec_domain_t *domain_handle;         /* Process data domain */
+    ec_slave_config_t *slave_config;    /* Slave configuration */
+    
+    /* Slave identification */
+    uint16_t alias;
+    uint16_t position;
+    uint32_t vendor_id;
+    uint32_t product_id;
+    
+    /* PDO offsets (calculated after registration) */
+    unsigned int rxpdo_offset;          /* RxPDO offset in domain */
+    unsigned int txpdo_offset;          /* TxPDO offset in domain */
+    unsigned int rxpdo_size;            /* RxPDO size in bytes */
+    unsigned int txpdo_size;            /* TxPDO size in bytes */
+    
+    /* Domain data pointer (mapped memory) */
+    uint8_t *domain_pd;                 /* Pointer to domain process data */
+    
+    /* Sync configuration */
+    uint32_t sync0_cycle_time_ns;       /* SYNC0 cycle time (nanoseconds) */
+    uint32_t sync1_cycle_time_ns;       /* SYNC1 cycle time (nanoseconds) */
+    int32_t sync0_shift_time_ns;        /* SYNC0 shift time */
+    int32_t sync1_shift_time_ns;        /* SYNC1 shift time */
+    
+    /* State tracking */
+    bool slave_online;                  /* Slave is configured and online */
+    bool domain_active;                 /* Domain is activated */
+    uint64_t last_dc_sync;              /* Last distributed clocks sync */
+    uint32_t error_count;               /* Error counter */
+    
+    /* Sequence management */
+    uint16_t last_rx_seq;               /* Last received sequence number */
+    uint16_t last_tx_seq;               /* Last transmitted sequence number */
+    
+    /* RT optimization */
+    bool use_hwtimestamp;               /* Use hardware timestamps */
+    int irq_cpu_affinity[8];            /* CPU affinity mask */
+    int irq_cpu_count;                  /* Number of CPUs in affinity mask */
+};
+
+/* ─── PDO Mapping Configuration for Klipper Protocol ──────────────────── */
+/*
+ * Define the PDO mapping for Klipper communication over EtherCAT.
+ * This uses standard CiA402-like mapping with custom entries for Klipper protocol.
+ */
+static const ec_pdo_entry_info_t klipper_rxpdo_entries[] = {
+    {0x1600, 0x00, 16},  /* Message length (16 bits) */
+    {0x1600, 0x01, 16},  /* Sequence number (16 bits) */
+    {0x1600, 0x02, 8},   /* Payload byte 0 */
+    {0x1600, 0x03, 8},   /* Payload byte 1 */
+    {0x1600, 0x04, 8},   /* Payload byte 2 */
+    {0x1600, 0x05, 8},   /* Payload byte 3 */
+    {0x1600, 0x06, 8},   /* Payload byte 4 */
+    {0x1600, 0x07, 8},   /* Payload byte 5 */
+    {0x1600, 0x08, 8},   /* Payload byte 6 */
+    {0x1600, 0x09, 8},   /* Payload byte 7 */
+    /* Add more payload bytes as needed up to ETHERTUX_PDU_MAX_SIZE */
+};
+
+static const ec_pdo_entry_info_t klipper_txpdo_entries[] = {
+    {0x1A00, 0x00, 16},  /* Message length (16 bits) */
+    {0x1A00, 0x01, 16},  /* Sequence number (16 bits) */
+    {0x1A00, 0x02, 8},   /* Payload byte 0 */
+    {0x1A00, 0x03, 8},   /* Payload byte 1 */
+    {0x1A00, 0x04, 8},   /* Payload byte 2 */
+    {0x1A00, 0x05, 8},   /* Payload byte 3 */
+    {0x1A00, 0x06, 8},   /* Payload byte 4 */
+    {0x1A00, 0x07, 8},   /* Payload byte 5 */
+    {0x1A00, 0x08, 8},   /* Payload byte 6 */
+    {0x1A00, 0x09, 8},   /* Payload byte 7 */
+    /* Add more payload bytes as needed */
+};
+
+static const ec_pdo_info_t klipper_rxpdos[] = {
+    {0x1600, ARRAY_SIZE(klipper_rxpdo_entries), klipper_rxpdo_entries},
+};
+
+static const ec_pdo_info_t klipper_txpdos[] = {
+    {0x1A00, ARRAY_SIZE(klipper_txpdo_entries), klipper_txpdo_entries},
+};
+
+static const ec_sync_info_t klipper_syncs[] = {
+    {0, EC_DIR_OUTPUT, 0, NULL, EC_WD_DISABLE},
+    {1, EC_DIR_INPUT, 0, NULL, EC_WD_DISABLE},
+    {2, EC_DIR_OUTPUT, ARRAY_SIZE(klipper_rxpdos), klipper_rxpdos, EC_WD_ENABLE},
+    {3, EC_DIR_INPUT, ARRAY_SIZE(klipper_txpdos), klipper_txpdos, EC_WD_DISABLE},
+    {0xFF}
+};
 
 /* ─── Ethertux Context Helpers ────────────────────────────────────────── */
 static ethertux_ctx_t *ethertux_ctx_alloc(void) {
@@ -46,48 +150,147 @@ static ethertux_ctx_t *ethertux_ctx_alloc(void) {
     if (!ctx) return NULL;
     ctx->sync0_cycle_time_ns = ETHERTUX_DEFAULT_CYCLE_TIME_NS;
     ctx->sync1_cycle_time_ns = ETHERTUX_DEFAULT_CYCLE_TIME_NS;
+    ctx->sync0_shift_time_ns = 0;
+    ctx->sync1_shift_time_ns = 0;
     ctx->use_hwtimestamp = true;
+    ctx->irq_cpu_count = 0;
     return ctx;
 }
 
 static void ethertux_ctx_free(ethertux_ctx_t *ctx) {
     if (!ctx) return;
     /* Cleanup IGH resources if initialized */
-    if (ctx->domain_handle) ecrt_domain_release(ctx->domain_handle);
-    if (ctx->master_handle) ecrt_release_master(ctx->master_handle);
+    if (ctx->domain_handle) {
+        /* Note: ecrt_domain_release() is not available in IGH 1.6,
+         * domains are released automatically when master is released */
+        ctx->domain_handle = NULL;
+    }
+    if (ctx->master_handle) {
+        ecrt_release_master(ctx->master_handle);
+        ctx->master_handle = NULL;
+    }
     free(ctx);
+}
+
+/* ─── PDO Registration Helper ─────────────────────────────────────────── */
+static int ethertux_register_pdos(ethertux_ctx_t *ctx) {
+    int ret;
+    
+    /* Register RxPDO entries */
+    ret = ecrt_slave_config_reg_pdo_entry(
+        ctx->slave_config, 0x1600, 0x00, ctx->domain_handle, &ctx->rxpdo_offset);
+    if (ret < 0) {
+        errorf("ethertux: failed to register RxPDO length entry");
+        return ret;
+    }
+    ctx->rxpdo_size = 2; /* Start with length field size */
+    
+    /* Register additional RxPDO payload entries */
+    for (int i = 1; i < 8 && ctx->rxpdo_size < ETHERTUX_PDU_MAX_SIZE; i++) {
+        unsigned int offset;
+        ret = ecrt_slave_config_reg_pdo_entry(
+            ctx->slave_config, 0x1600, i, ctx->domain_handle, &offset);
+        if (ret < 0) break;
+        ctx->rxpdo_size += 1;
+    }
+    
+    /* Register TxPDO entries */
+    ret = ecrt_slave_config_reg_pdo_entry(
+        ctx->slave_config, 0x1A00, 0x00, ctx->domain_handle, &ctx->txpdo_offset);
+    if (ret < 0) {
+        errorf("ethertux: failed to register TxPDO length entry");
+        return ret;
+    }
+    ctx->txpdo_size = 2; /* Start with length field size */
+    
+    /* Register additional TxPDO payload entries */
+    for (int i = 1; i < 8 && ctx->txpdo_size < ETHERTUX_PDU_MAX_SIZE; i++) {
+        unsigned int offset;
+        ret = ecrt_slave_config_reg_pdo_entry(
+            ctx->slave_config, 0x1A00, i, ctx->domain_handle, &offset);
+        if (ret < 0) break;
+        ctx->txpdo_size += 1;
+    }
+    
+    return 0;
 }
 
 /* ─── Backend Initialization ──────────────────────────────────────────── */
 __attribute__((cold)) static int ethertux_init(struct conn_manager *cm) {
+    int ret;
+    
     if (!cm->ethertux) {
         cm->ethertux = ethertux_ctx_alloc();
         if (!cm->ethertux) return -ENOMEM;
     }
     
-    /* Request IGH Master */
-    ec_master_t *master = ecrt_request_master(0); /* Master index 0 */
+    ethertux_ctx_t *ctx = cm->ethertux;
+    
+    /* Request IGH Master (index 0 = first master) */
+    ec_master_t *master = ecrt_request_master(0);
     if (!master) {
-        errorf("ethertux: failed to request IGH master");
+        errorf("ethertux: failed to request IGH master (index 0)");
         return -ENODEV;
     }
-    cm->ethertux->master_handle = master;
+    ctx->master_handle = master;
     
     /* Create Domain */
     ec_domain_t *domain = ecrt_master_create_domain(master);
     if (!domain) {
         errorf("ethertux: failed to create domain");
         ecrt_release_master(master);
+        ctx->master_handle = NULL;
         return -ENOMEM;
     }
-    cm->ethertux->domain_handle = domain;
+    ctx->domain_handle = domain;
     
-    /* Configure Slave (lazy: actual config on first send) */
-    cm->ethertux->slave_online = false;
+    /* Get Slave Configuration */
+    ctx->slave_config = ecrt_master_slave_config(
+        master, ctx->alias, ctx->position, ctx->vendor_id, ctx->product_id);
+    if (!ctx->slave_config) {
+        errorf("ethertux: failed to get slave config (%u:%u, %04X:%04X)",
+               ctx->alias, ctx->position, ctx->vendor_id, ctx->product_id);
+        ecrt_release_master(master);
+        ctx->master_handle = NULL;
+        return -ENODEV;
+    }
     
-    /* RT Memory Locking */
-    if (mlockall(MCL_CURRENT | MCL_FUTURE) == 0)
-        errorf("ethertux: memory locked for RT");
+    /* Configure PDOs */
+    ret = ethertux_register_pdos(ctx);
+    if (ret < 0) {
+        ecrt_release_master(master);
+        ctx->master_handle = NULL;
+        return ret;
+    }
+    
+    /* Configure Distributed Clocks (DC) */
+    /* assign_activate: 0x0300 = SYNC0 + SYNC1 activation */
+    ecrt_slave_config_dc(ctx->slave_config, 0x0300,
+                         ctx->sync0_cycle_time_ns, ctx->sync0_shift_time_ns,
+                         ctx->sync1_cycle_time_ns, ctx->sync1_shift_time_ns);
+    
+    /* Set PDO mapping using sync manager configuration */
+    ret = ecrt_slave_config_pdos(ctx->slave_config, EC_END, klipper_syncs);
+    if (ret < 0) {
+        errorf("ethertux: failed to configure PDOs");
+        ecrt_release_master(master);
+        ctx->master_handle = NULL;
+        return ret;
+    }
+    
+    /* Initial state */
+    ctx->slave_online = false;
+    ctx->domain_active = false;
+    ctx->last_rx_seq = 0;
+    ctx->last_tx_seq = 0;
+    ctx->error_count = 0;
+    
+    /* RT Memory Locking (optional, requires CAP_IPC_LOCK) */
+    if (mlockall(MCL_CURRENT | MCL_FUTURE) == 0) {
+        errorf("ethertux: memory locked for real-time operation");
+    } else {
+        errorf("ethertux: warning - could not lock memory (run as root or set capabilities)");
+    }
     
     return 0;
 }
@@ -99,116 +302,213 @@ static void ethertux_exit(struct conn_manager *cm) {
     }
 }
 
-/* ─── Read: Non-blocking Domain Process ───────────────────────────────── */
+/* ─── Read: Extract Klipper Messages from TxPDO ───────────────────────── */
 __attribute__((hot)) static int ethertux_read(struct conn_manager *cm, double eventtime) {
     (void)eventtime;
+    
     if (!cm->ethertux || !cm->ethertux->slave_online) return 0;
     
-    ec_master_t *master = cm->ethertux->master_handle;
-    ec_domain_t *domain = cm->ethertux->domain_handle;
+    ethertux_ctx_t *ctx = cm->ethertux;
+    ec_master_t *master = ctx->master_handle;
+    ec_domain_t *domain = ctx->domain_handle;
     
-    /* Receive process data */
+    /* Receive process data from network */
     ecrt_master_receive(master);
-    ecrt_domain_process(domain);
     
-    /* Check for incoming Klipper messages in Rx PDO */
-    /* Ethertux slave packs Klipper protocol into a dedicated Rx PDO */
+    /* Process domain data and update states */
+    int ret = ecrt_domain_process(domain);
+    if (ret < 0) {
+        ctx->error_count++;
+        return 0;
+    }
+    
+    /* Get pointer to domain process data */
     uint8_t *domain_pd = ecrt_domain_data(domain);
     if (!domain_pd) return 0;
     
-    /* Assume Klipper Rx PDO starts at offset 0 for simplicity */
-    int available = 0; /* Slave reports available bytes via status PDO */
-    /* ... [Implementar lógica de extracción de mensajes Klipper desde PDO] ... */
+    /* Store domain pointer for later use */
+    ctx->domain_pd = domain_pd;
     
-    return available;
+    /* Read message from TxPDO (Slave -> Master) */
+    if (ctx->txpdo_offset + KLIPPER_PDO_HEADER_SIZE >= ctx->txpdo_size) {
+        return 0; /* No valid data */
+    }
+    
+    /* Extract length and sequence from TxPDO */
+    uint16_t msg_len = *(uint16_t*)(domain_pd + ctx->txpdo_offset + KLIPPER_PDO_LENGTH_OFS);
+    uint16_t seq_num = *(uint16_t*)(domain_pd + ctx->txpdo_offset + KLIPPER_PDO_SEQ_OFS);
+    
+    /* Validate message */
+    if (msg_len == 0 || msg_len > ETHERTUX_PDU_MAX_SIZE - KLIPPER_PDO_HEADER_SIZE) {
+        return 0; /* Invalid length */
+    }
+    
+    /* Check sequence number (simple duplicate detection) */
+    if (seq_num == ctx->last_rx_seq) {
+        return 0; /* Duplicate message */
+    }
+    ctx->last_rx_seq = seq_num;
+    
+    /* Copy payload to input buffer */
+    uint8_t *src = domain_pd + ctx->txpdo_offset + KLIPPER_PDO_DATA_OFS;
+    int copy_len = (msg_len < cm->input_pos) ? msg_len : (sizeof(cm->input_buf) - cm->input_pos);
+    if (copy_len > 0 && cm->input_pos + copy_len <= sizeof(cm->input_buf)) {
+        memcpy(&cm->input_buf[cm->input_pos], src, copy_len);
+        cm->input_pos += copy_len;
+        return copy_len;
+    }
+    
+    return 0;
 }
 
-/* ─── Write: Domain Queue with Sync Management ────────────────────────── */
+/* ─── Write: Send Klipper Messages via RxPDO ──────────────────────────── */
 __attribute__((hot)) static int ethertux_write(struct conn_manager *cm, const void *buf, int len) {
     if (!cm->ethertux || !cm->ethertux->slave_online) return -ENOTCONN;
-    if (len > ETHERTUX_PDU_MAX_SIZE) return -EMSGSIZE;
+    if (len <= 0 || len > ETHERTUX_PDU_MAX_SIZE - KLIPPER_PDO_HEADER_SIZE) return -EMSGSIZE;
     
-    ec_domain_t *domain = cm->ethertux->domain_handle;
+    ethertux_ctx_t *ctx = cm->ethertux;
+    ec_master_t *master = ctx->master_handle;
+    ec_domain_t *domain = ctx->domain_handle;
+    
+    /* Get pointer to domain process data */
     uint8_t *domain_pd = ecrt_domain_data(domain);
     if (!domain_pd) return -ENOMEM;
     
-    /* Copy to Tx PDO (zero-copy if aligned) */
-    /* Ethertux slave expects Klipper protocol in Tx PDO at known offset */
-    memcpy(domain_pd, buf, len);
+    ctx->domain_pd = domain_pd;
+    
+    /* Increment sequence number */
+    ctx->last_tx_seq++;
+    
+    /* Write length to RxPDO */
+    *(uint16_t*)(domain_pd + ctx->rxpdo_offset + KLIPPER_PDO_LENGTH_OFS) = (uint16_t)len;
+    
+    /* Write sequence number to RxPDO */
+    *(uint16_t*)(domain_pd + ctx->rxpdo_offset + KLIPPER_PDO_SEQ_OFS) = ctx->last_tx_seq;
+    
+    /* Copy payload to RxPDO */
+    memcpy(domain_pd + ctx->rxpdo_offset + KLIPPER_PDO_DATA_OFS, buf, len);
     
     /* Queue domain for transmission */
-    ecrt_domain_queue(domain);
+    int ret = ecrt_domain_queue(domain);
+    if (ret < 0) {
+        ctx->error_count++;
+        return ret;
+    }
     
-    /* Send process data */
-    ecrt_master_send(cm->ethertux->master_handle);
+    /* Send process data to network */
+    ret = ecrt_master_send(master);
+    if (ret < 0) {
+        ctx->error_count++;
+        return ret;
+    }
     
     return len;
 }
 
-/* ─── Timing: EtherCAT Cycle-based ────────────────────────────────────── */
+/* ─── Timing: EtherCAT Cycle-based Bit Time Calculation ───────────────── */
 __attribute__((hot, flatten)) static double ethertux_calc_bittime(struct conn_manager *cm, uint32_t bytes) {
-    /* EtherCAT: deterministic cycle time, not bit-time */
-    (void)bytes;
+    (void)bytes; /* EtherCAT uses fixed cycle time, not bit-time */
+    
     if (!cm->ethertux) return 0.0;
-    return cm->ethertux->sync0_cycle_time_ns / 1e9; /* Convert ns to seconds */
+    
+    /* Return cycle time in seconds */
+    return cm->ethertux->sync0_cycle_time_ns / 1e9;
 }
 
-/* ─── Autonegotiation: Slave Detection & PDO Mapping ──────────────────── */
+/* ─── Autonegotiation: Slave Detection & Activation ───────────────────── */
 __attribute__((hot)) static void ethertux_autoneg_tick(struct conn_manager *cm, double eventtime) {
     (void)eventtime;
+    
     if (!cm->ethertux || cm->ethertux->slave_online) return;
     
-    ec_master_t *master = cm->ethertux->master_handle;
-    ec_slave_config_t *sc = ecrt_master_slave_config(
-        master, cm->ethertux->alias, cm->ethertux->position,
-        cm->ethertux->vendor_id, cm->ethertux->product_id);
-    if (!sc) return;
+    ethertux_ctx_t *ctx = cm->ethertux;
+    ec_master_state_t ms;
     
-    /* Configure DC Sync */
-    ecrt_slave_config_dc(sc, 0x0300, cm->ethertux->sync0_cycle_time_ns,
-                         cm->ethertux->sync1_cycle_time_ns, 0, 0);
+    /* Check master state */
+    ecrt_master_state(ctx->master_handle, &ms);
     
-    /* Configure PDOs (Klipper protocol mapping) */
-    /* ... [Implementar mapeo de PDOs para Klipper Tx/Rx] ... */
+    /* Check if slaves are responding */
+    if (ms.slaves_responding == 0) {
+        return; /* No slaves detected yet */
+    }
     
-    /* Activate configuration */
-    if (ecrt_master_activate(master) == 0) {
-        cm->ethertux->slave_online = true;
-        errorf("ethertux: slave %u:%u online", cm->ethertux->alias, cm->ethertux->position);
+    /* Check slave configuration state */
+    ec_slave_config_state_t sc_state;
+    ecrt_slave_config_state(ctx->slave_config, &sc_state);
+    
+    if (sc_state.online && sc_state.operational) {
+        /* Slave is online and operational - activate domain */
+        int ret = ecrt_master_activate(ctx->master_handle);
+        if (ret == 0) {
+            ctx->domain_active = true;
+            ctx->slave_online = true;
+            errorf("ethertux: slave %u:%u online and operational",
+                   ctx->alias, ctx->position);
+        } else {
+            ctx->error_count++;
+            errorf("ethertux: failed to activate master (error %d)", ret);
+        }
     }
 }
 
-/* ─── Flush: Domain Sync ──────────────────────────────────────────────── */
+/* ─── Flush: Synchronize Master ───────────────────────────────────────── */
 static void ethertux_flush_tx(struct conn_manager *cm) {
-    if (cm->ethertux && cm->ethertux->master_handle)
-        ecrt_master_sync(cm->ethertux->master_handle);
+    if (!cm->ethertux || !cm->ethertux->master_handle) return;
+    
+    /* Force immediate transmission */
+    ecrt_master_send(cm->ethertux->master_handle);
 }
 
-/* ─── Parameters: EtherCAT-specific Tuning ────────────────────────────── */
+/* ─── Parameters: EtherCAT-specific Configuration ─────────────────────── */
 static void ethertux_set_params(struct conn_manager *cm, const char *key, const void *value, size_t len) {
     if (!cm->ethertux) return;
     
+    ethertux_ctx_t *ctx = cm->ethertux;
+    
     if (strcmp(key, "cycle_time_ns") == 0 && len == sizeof(uint32_t)) {
         uint32_t ns = *(const uint32_t*)value;
-        if (ns >= 125000 && ns <= 1000000) /* 125µs - 1ms */
-            cm->ethertux->sync0_cycle_time_ns = ns;
+        /* Valid range: 125µs to 10ms (typical EtherCAT cycle times) */
+        if (ns >= 125000 && ns <= 10000000) {
+            ctx->sync0_cycle_time_ns = ns;
+            ctx->sync1_cycle_time_ns = ns;
+        }
+    } else if (strcmp(key, "sync0_shift_ns") == 0 && len == sizeof(int32_t)) {
+        ctx->sync0_shift_time_ns = *(const int32_t*)value;
+    } else if (strcmp(key, "sync1_shift_ns") == 0 && len == sizeof(int32_t)) {
+        ctx->sync1_shift_time_ns = *(const int32_t*)value;
     } else if (strcmp(key, "hwtimestamp") == 0 && len == sizeof(bool)) {
-        cm->ethertux->use_hwtimestamp = *(const bool*)value;
+        ctx->use_hwtimestamp = *(const bool*)value;
+    } else if (strcmp(key, "alias") == 0 && len == sizeof(uint16_t)) {
+        ctx->alias = *(const uint16_t*)value;
+    } else if (strcmp(key, "position") == 0 && len == sizeof(uint16_t)) {
+        ctx->position = *(const uint16_t*)value;
+    } else if (strcmp(key, "vendor_id") == 0 && len == sizeof(uint32_t)) {
+        ctx->vendor_id = *(const uint32_t*)value;
+    } else if (strcmp(key, "product_id") == 0 && len == sizeof(uint32_t)) {
+        ctx->product_id = *(const uint32_t*)value;
     }
 }
 
-/* ─── RT Optimization: IRQ Affinity for EtherCAT Master ───────────────── */
+/* ─── RT Optimization: CPU Affinity ───────────────────────────────────── */
 static int ethertux_pin_irq(struct conn_manager *cm, int cpu_id) {
-    if (!cm->ethertux) return -ENODEV;
-    /* IGH: ecrt_master_set_irq_affinity() if available in version */
-    /* Fallback: set CPU affinity for master thread */
+    if (!cm->ethertux || cpu_id < 0) return -ENODEV;
+    
+    /* Store CPU affinity for later use */
+    cm->ethertux->irq_cpu_affinity[0] = cpu_id;
+    cm->ethertux->irq_cpu_count = 1;
+    
+    /* Pin current thread to CPU */
     return conn_pin_to_cpu(cm, cpu_id);
 }
 
 static int ethertux_set_irq_affinity(struct conn_manager *cm, const int *cpu_list, int count) {
-    if (!cm->ethertux || !cpu_list || count <= 0) return -EINVAL;
-    /* IGH: ecrt_master_set_irq_cpu_mask() for multi-IRQ systems */
-    /* For now, pin to first CPU in list */
+    if (!cm->ethertux || !cpu_list || count <= 0 || count > 8) return -EINVAL;
+    
+    /* Store CPU affinity mask */
+    memcpy(cm->ethertux->irq_cpu_affinity, cpu_list, count * sizeof(int));
+    cm->ethertux->irq_cpu_count = count;
+    
+    /* Pin to first CPU in list */
     return conn_pin_to_cpu(cm, cpu_list[0]);
 }
 
