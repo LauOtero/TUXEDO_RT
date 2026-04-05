@@ -1,65 +1,53 @@
-```
-# Compiled and build artifacts
-*.o
-*.obj
-*.so
-*.dll
-*.exe
-*.a
-*.out
-
-# Dependencies
+# Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.pytest_cache/
-.mypy_cache/
-.eggs/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
 eggs/
+.eggs/
+lib/
+lib64/
+parts/
 sdist/
-bdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-*.swo
+# Virtual environments
+venv/
+ENV/
+env.bak/
+.venv/
 
-# Environment
-.env
-.env.local
-*.env.*
+# Testing
+.coverage
+coverage/
+htmlcov/
+.nosetests
+.pytest_cache/
 
-# Editors
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*.tmp
 
-# Build directories
-build/
-dist/
-*.egg-info/
-.coverage
-htmlcov/
-coverage/
-
-# OS specific
+# OS
 .DS_Store
 Thumbs.db
 
-# C-specific build artifacts
-*.a
-*.so
-*.dylib
-*.dll
-*.exe
-*.out
-*.o
-*.obj
-*.pyc
-*.pyo
-*.pyd
-*.py.class
-```
+# Logs
+*.log
+
+# Environment variables
+.env
+.env.local
+*.env.*

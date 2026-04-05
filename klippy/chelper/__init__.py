@@ -72,7 +72,7 @@ RISCV32_BASE_FLAGS   = ["-march=rv32gc"]
 # Source Files (Modular conn_manager architecture)
 ######################################################################
 SOURCE_FILES = [
-    'pyhelper.c', 'crc_utils.c', 
+    'pyhelper.c', 'ultracrc.c', 'ultracrc_tables.c', 
     'conn_manager.c', 'conn_serial.c', 'conn_can.c', 'conn_ethertux.c', 'conn_rs485.c',
     'stepcompress.c', 'steppersync.c', 'itersolve.c',
     'trapq.c', 'pollreactor.c', 'msgblock.c', 'trdispatch.c',
@@ -88,7 +88,7 @@ OTHER_FILES = [
     'list.h', 'conn_manager.h', 'conn_backend.h', 'conn_internal.h',  # ← New Headers
     'stepcompress.h', 'steppersync.h', 'itersolve.h',
     'pyhelper.h', 'trapq.h', 'pollreactor.h', 'msgblock.h',
-    'compiler.h', 'crc_utils.h', 'gcode_parser.h',
+    'compiler.h', 'ultracrc.h', 'ultracrc_tables.h', 'gcode_parser.h',
 ]
 
 ######################################################################
@@ -408,39 +408,43 @@ defs_std = """
 void free(void*);
 """
 
-defs_crc_utils = """
+defs_ultracrc = """
 typedef enum {
-    CRC_ARCH_GENERIC          = 0,
-    CRC_ARCH_X86_SSE42        = 1,
-    CRC_ARCH_X86_PCLMUL       = 2,
-    CRC_ARCH_X86_VPCLMUL      = 3,
-    CRC_ARCH_ARMV8_CRC        = 4,
-    CRC_ARCH_ARMV8_PMULL      = 5,
-    CRC_ARCH_ARMV8_PMULL_EOR3 = 6
-} crc_arch_t;
+    ULTRACRC_ARCH_GENERIC          = 0,
+    ULTRACRC_ARCH_X86_SSE42        = 1,
+    ULTRACRC_ARCH_X86_PCLMUL       = 2,
+    ULTRACRC_ARCH_X86_VPCLMUL      = 3,
+    ULTRACRC_ARCH_ARMV8_CRC        = 4,
+    ULTRACRC_ARCH_ARMV8_PMULL      = 5,
+    ULTRACRC_ARCH_ARMV8_PMULL_EOR3 = 6,
+    ULTRACRC_ARCH_RISCV_ZBC        = 7,
+    ULTRACRC_ARCH_UNOQ_OPT         = 8
+} ultracrc_arch_t;
 typedef struct {
     double     crc8_mbs;
     double     crc16_mbs;
     double     crc32_mbs;
     double     crc32c_mbs;
+    double     crc64_mbs;
     uint64_t   iterations;
     size_t     buf_size;
-    crc_arch_t arch_tier;
-} crc_bench_result_t;
-void crc_utils_warmup(void);
-uint8_t  crc8_compute(const uint8_t *data, size_t len, uint8_t init);
-uint16_t crc16_ccitt_compute(const uint8_t *data, size_t len, uint16_t init);
-uint32_t crc32_compute(const uint8_t *data, size_t len, uint32_t init);
-uint32_t crc32c_compute(const uint8_t *data, size_t len, uint32_t init);
-int   crc_utils_lock_memory(void);
-int   crc_utils_set_rt_scheduler(int priority);
-int   crc_utils_pin_to_cpu(int cpu_id);
-void *crc_utils_alloc_aligned(size_t size, size_t alignment);
-void  crc_utils_prefetch_data(const void *ptr, size_t len);
-crc_arch_t  crc_utils_detect_arch(void);
-void        crc_utils_set_override_arch(crc_arch_t arch);
-const char *crc_utils_arch_name(crc_arch_t arch);
-crc_bench_result_t crc_utils_run_benchmark(size_t buf_size, uint64_t iterations);
+    ultracrc_arch_t arch_tier;
+} ultracrc_bench_result_t;
+void ultracrc_warmup(void);
+uint8_t  ultracrc8_compute(const uint8_t *data, size_t len, uint8_t init);
+uint16_t ultracrc16_ccitt_compute(const uint8_t *data, size_t len, uint16_t init);
+uint32_t ultracrc32_compute(const uint8_t *data, size_t len, uint32_t init);
+uint32_t ultracrc32c_compute(const uint8_t *data, size_t len, uint32_t init);
+uint64_t ultracrc64_ecma_compute(const uint8_t *data, size_t len, uint64_t init);
+int   ultracrc_lock_memory(void);
+int   ultracrc_set_rt_scheduler(int priority);
+int   ultracrc_pin_to_cpu(int cpu_id);
+void *ultracrc_alloc_aligned(size_t size, size_t alignment);
+void  ultracrc_prefetch_adaptive(const void *ptr, size_t len);
+ultracrc_arch_t  ultracrc_detect_arch(void);
+void             ultracrc_set_override_arch(ultracrc_arch_t arch);
+const char      *ultracrc_arch_name(ultracrc_arch_t arch);
+ultracrc_bench_result_t ultracrc_run_benchmark(size_t buf_size, uint64_t iterations);
 """
 
 defs_msgblock = """
@@ -469,7 +473,7 @@ uint8_t gcode_validate_checksum(const uint8_t *line, int32_t len,
 """
 
 defs_all = [
-    defs_pyhelper, defs_conn_manager, defs_std, defs_crc_utils, defs_list,
+    defs_pyhelper, defs_conn_manager, defs_std, defs_ultracrc, defs_list,
     defs_stepcompress, defs_steppersync, defs_itersolve, defs_trapq, defs_trdispatch,
     defs_kin_cartesian, defs_kin_corexy, defs_kin_corexz, defs_kin_delta,
     defs_kin_deltesian, defs_kin_polar, defs_kin_rotary_delta, defs_kin_winch,
@@ -744,13 +748,14 @@ def run_crc_benchmark(buf_size=1_048_576, iterations=50_000):
     if not lib:
         return {"error": "C helper not available"}
     
-    res = lib.crc_utils_run_benchmark(buf_size, iterations)
+    res = lib.ultracrc_run_benchmark(buf_size, iterations)
     return {
-        "arch": lib.crc_utils_arch_name(res.arch_tier),
+        "arch": lib.ultracrc_arch_name(res.arch_tier),
         "crc8_mbs": res.crc8_mbs,
         "crc16_mbs": res.crc16_mbs,
         "crc32_mbs": res.crc32_mbs,
         "crc32c_mbs": res.crc32c_mbs,
+        "crc64_mbs": res.crc64_mbs,
         "iterations": res.iterations,
         "buf_size": res.buf_size
     }
@@ -776,11 +781,11 @@ def get_ffi():
         
         # Warm up the CRC dispatch table eagerly
         try:
-            FFI_lib.crc_utils_warmup()
-            arch = FFI_lib.crc_utils_arch_name(FFI_lib.crc_utils_detect_arch())
-            logging.info("crc_utils: warmed up (arch=%s)", arch)
+            FFI_lib.ultracrc_warmup()
+            arch = FFI_lib.ultracrc_arch_name(FFI_lib.ultracrc_detect_arch())
+            logging.info("ultracrc: warmed up (arch=%s)", arch)
         except Exception as e:
-            logging.warning("crc_utils_warmup() failed (non-fatal): %s", str(e))
+            logging.warning("ultracrc_warmup() failed (non-fatal): %s", str(e))
         
         # Warm up the G-code parser LUTs
         try:
