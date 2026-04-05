@@ -62,11 +62,18 @@ typedef struct {
 typedef struct {
     void *master_handle;          // ec_master_t*
     void *domain_handle;          // ec_domain_t*
+    void *slave_config;           // ec_slave_config_t*
     uint16_t alias;
     uint16_t position;
     uint32_t vendor_id, product_id;
     
     /* PDO Mapping */
+    unsigned int rxpdo_offset;
+    unsigned int txpdo_offset;
+    unsigned int rxpdo_size;
+    unsigned int txpdo_size;
+    uint8_t *domain_pd;
+    
     struct {
         uint32_t index;
         uint8_t subindex;
@@ -78,6 +85,8 @@ typedef struct {
     /* Sync Manager Configuration */
     uint32_t sync0_cycle_time_ns;
     uint32_t sync1_cycle_time_ns;
+    int32_t sync0_shift_time_ns;
+    int32_t sync1_shift_time_ns;
     
     /* RT Optimization */
     int irq_cpu_affinity[8];
@@ -86,8 +95,13 @@ typedef struct {
     
     /* State */
     bool slave_online;
+    bool domain_active;
     uint64_t last_dc_sync;
     uint32_t error_count;
+    
+    /* Sequence management */
+    uint16_t last_rx_seq;
+    uint16_t last_tx_seq;
 } ethertux_ctx_t;
 
 /* ─── Full Connection Manager Structure ───────────────────────────────── */

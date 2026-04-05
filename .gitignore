@@ -121,3 +121,4 @@ Thumbs.db
 .env
 .env.local
 *.env.*
+temp/klipper

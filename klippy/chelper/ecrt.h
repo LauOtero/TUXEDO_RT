@@ -1,7 +1,3 @@
---- klippy/chelper/ecrt.h (原始)
-
-
-+++ klippy/chelper/ecrt.h (修改后)
 /*****************************************************************************
  *
  *  Copyright (C) 2006-2024  Florian Pose, Ingenieurgemeinschaft IgH
