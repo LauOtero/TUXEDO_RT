@@ -15,9 +15,9 @@
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        KLIPPER HOST                             │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐ │
-│  │ mcu_conn.py │  │  connhdl.py │  │  rtcore/connections/    │ │
-│  └──────┬──────┘  └──────┬──────┘  └───────────┬─────────────┘ │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
+│  │ mcu_conn.py │  │  connhdl.py │  │  rtcore/connections/    │  │
+│  └──────┬──────┘  └──────┬──────┘  └────────────┬────────────┘  │
 │         │                │                      │               │
 │         └────────────────┼──────────────────────┘               │
 │                          │                                      │
@@ -30,16 +30,16 @@
                            │
 ┌──────────────────────────▼──────────────────────────────────────┐
 │                    CHELPER SHARED LIBRARY                       │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │ conn_manager.c (Backend Dispatcher)                     │   │
-│  │  ├── conn_serial_backend   (UART/USB)                   │   │
-│  │  ├── conn_can_backend      (CAN 2.0/CAN-FD)             │   │
-│  │  ├── conn_ethertux_backend (EtherCAT/IGH)               │   │
-│  │  ├── conn_rs485_backend    (RS-485 Half-Duplex)         │   │
-│  │  ├── conn_spi_backend      (SPI/DSPI/QSPI)              │   │
-│  │  ├── conn_debugpipe_backend (DEBUGFILE/PIPE unified)    │   │
-│  │  └── zckb_shm.c            (Zero-Copy Kernel-Bypass)    │   │
-│  └─────────────────────────────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │ conn_manager.c (Backend Dispatcher)                     │    │
+│  │  ├── conn_serial_backend    (UART/USB)                  │    │
+│  │  ├── conn_can_backend       (CAN 2.0/CAN-FD)            │    │
+│  │  ├── conn_ethertux_backend  (EtherCAT/IGH)              │    │
+│  │  ├── conn_rs485_backend     (RS-485 Half-Duplex)        │    │
+│  │  ├── conn_spi_backend       (SPI/DSPI/QSPI)             │    │
+│  │  ├── conn_debugpipe_backend (DEBUGFILE/PIPE unified)    │    │
+│  │  └── zckb_shm.c             (Zero-Copy Kernel-Bypass)   │    │
+│  └─────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
