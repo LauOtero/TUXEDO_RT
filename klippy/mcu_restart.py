@@ -6,7 +6,7 @@
 
 import logging, os
 import chelper, mcu_conn
-from rtcore.transport import utils as transport_utils
+from rtcore.connections import utils as connection_utils
 
 class MCURestartHelper:
     """

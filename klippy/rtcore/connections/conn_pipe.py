@@ -1,15 +1,15 @@
-# RT Core Pipe Transport implementation
-# TUXEDO_RT: Implementación de transporte vía Pipe / Unix Domain Socket
+# RT Core Pipe Connection implementation
+# TUXEDO_RT: Implementación de conexión vía Pipe / Unix Domain Socket
 import os, logging
-from .base import RTTransport
+from .base import RTConnection
 
-class PipeTransport(RTTransport):
+class PipeConnection(RTConnection):
     CONFIG_PARAMS = {
         'filename': ('str', None, True)
     }
 
     def __init__(self, reactor, filename, mcu_name=""):
-        super(PipeTransport, self).__init__(reactor, mcu_name)
+        super(PipeConnection, self).__init__(reactor, mcu_name)
         self.filename = filename
         self.serial_dev = None
 
@@ -45,3 +45,4 @@ class PipeTransport(RTTransport):
 
     def get_info(self):
         return "Pipe %s" % (self.filename,)
+

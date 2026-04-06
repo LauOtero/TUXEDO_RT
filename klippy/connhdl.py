@@ -19,7 +19,7 @@ import util
 from rtcore.memory_manager import DeterministicMemoryPool
 from rtcore.ring_buffer import LockFreeRingBuffer
 from rtcore.rt_core import RealTimeCore
-from rtcore.transport.factory import TransportFactory
+from rtcore.connections.factory import ConnectionFactory
 
 class error(Exception):
     pass
@@ -48,9 +48,9 @@ class ConnectionHandler:
         # Name for the C backend thread (max 15 chars)
         self.conn_name = ("conn %s" % (self.mcu_name))[:15].encode('utf-8')
         
-        # Transport Factory (Abstracts UART, CAN, EtherCAT setup)
-        self.transport_factory = TransportFactory()
-        self.transport = None
+        # Connection Factory (Abstracts UART, CAN, EtherCAT setup)
+        self.connection_factory = ConnectionFactory()
+        self.connection = None
         
         # C Interface (conn_manager)
         self.ffi_main, self.ffi_lib = chelper.get_ffi()
@@ -206,14 +206,14 @@ class ConnectionHandler:
     # =========================================================================
     # Connection Management
     # =========================================================================
-    def _start_session(self, transport: Any) -> bool:
-        """Initializes C conn_manager with transport parameters."""
-        self.transport = transport
+    def _start_session(self, connection: Any) -> bool:
+        """Initializes C conn_manager with connection parameters."""
+        self.connection = connection
         
-        # Get transport details
-        conn_type = transport.get_conn_type()  # b's', b'c', b'e', b'r'
-        client_id = transport.get_client_id()  # 0 for serial, node_id for can
-        fd = transport.get_fd()                # File descriptor or -1 for EtherCAT
+        # Get connection details
+        conn_type = connection.get_type()  # b's', b'c', b'e', b'r'
+        client_id = connection.get_client_id()  # 0 for serial, node_id for can
+        fd = connection.get_fd()                # File descriptor or -1 for EtherCAT
         
         logging.info("TUXEDO_RT: conn_alloc(type=%s, fd=%d, client_id=%d)",
                      conn_type.decode('utf-8'), fd, client_id)
@@ -227,17 +227,17 @@ class ConnectionHandler:
         if self.conn_mgr is None:
             raise error("Failed to allocate connection manager")
 
-        # Apply transport specific configs (e.g., CAN params)
-        if hasattr(transport, 'setup_connection'):
-            transport.setup_connection(self.ffi_lib, self.conn_mgr)
+        # Apply connection specific configs (e.g., CAN params)
+        if hasattr(connection, 'setup_serialqueue'):
+            connection.setup_serialqueue(self.ffi_lib, self.conn_mgr)
 
         # Load Dictionary / Identify
         self.msgparser = msgproto.MessageParser(warn_prefix=self.warn_prefix)
         
         if conn_type == CONN_TYPE_DEBUGFILE:
             # Debug mode loads dictionary immediately
-            if hasattr(transport, 'get_dictionary'):
-                self.msgparser.process_identify(transport.get_dictionary(), decompress=False)
+            if hasattr(connection, 'dictionary'):
+                self.msgparser.process_identify(connection.dictionary, decompress=False)
             return True
 
         # Normal mode: Identify sequence
@@ -266,45 +266,45 @@ class ConnectionHandler:
         
         return True
 
-    def _connect_transport(self, transport: Any, verify_callback=None) -> None:
-        """Loop to connect transport and start session."""
-        self.transport = transport
+    def _connect_connection(self, connection: Any, verify_callback=None) -> None:
+        """Loop to connect connection and start session."""
+        self.connection = connection
         while 1:
             try:
-                transport.open()
-                ret = self._start_session(transport)
+                connection.open()
+                ret = self._start_session(connection)
                 if ret:
-                    if verify_callback is None or verify_callback(transport):
+                    if verify_callback is None or verify_callback(connection):
                         break
             except Exception:
-                logging.exception("%sError connecting transport.", self.warn_prefix)
+                logging.exception("%sError connecting connection.", self.warn_prefix)
             
             self.disconnect()
             self.reactor.pause(self.reactor.monotonic() + 2.0)
 
     # Public Connection Methods
     def connect_serial(self, serialport: str, baud: int, rts: bool = True) -> None:
-        t = self.transport_factory.create_uart(self.reactor, serialport, baud, rts, self.mcu_name)
-        self._connect_transport(t)
+        c = self.connection_factory.create_uart(self.reactor, serialport, baud, rts, self.mcu_name)
+        self._connect_connection(c)
 
     def connect_canbus(self, canbus_uuid: str, node_id: int, iface: str) -> None:
-        t = self.transport_factory.create_can(self.reactor, canbus_uuid, node_id, iface, self.mcu_name)
-        def verify_can(tr):
+        c = self.connection_factory.create_can(self.reactor, canbus_uuid, node_id, iface, self.mcu_name)
+        def verify_can(conn):
             params = self.send_with_response('get_canbus_id', 'canbus_id')
-            return bytearray(params['canbus_uuid']) == bytearray(tr.uuid)
-        self._connect_transport(t, verify_can)
+            return bytearray(params['canbus_uuid']) == bytearray(conn.uuid)
+        self._connect_connection(c, verify_can)
 
     def connect_rs485(self, serialport: str, baud: int, delay: int = 0) -> None:
-        t = self.transport_factory.create_rs485(self.reactor, serialport, baud, delay, self.mcu_name)
-        self._connect_transport(t)
+        c = self.connection_factory.create_rs485(self.reactor, serialport, baud, delay, self.mcu_name)
+        self._connect_connection(c)
 
     def connect_ethertux(self, alias: int, position: int, vendor: int, product: int, cycle_ns: int) -> None:
-        t = self.transport_factory.create_ethertux(self.reactor, alias, position, vendor, product, cycle_ns, self.mcu_name)
-        self._connect_transport(t)
+        c = self.connection_factory.create_ethertux(self.reactor, alias, position, vendor, product, cycle_ns, self.mcu_name)
+        self._connect_connection(c)
 
     def connect_file(self, filename: str, dictionary: bytes) -> None:
-        t = self.transport_factory.create_file(self.reactor, filename, dictionary, self.mcu_name)
-        self._connect_transport(t)
+        c = self.connection_factory.create_file(self.reactor, filename, dictionary, self.mcu_name)
+        self._connect_connection(c)
 
     def disconnect(self) -> None:
         if self.conn_mgr is not None:
@@ -315,9 +315,9 @@ class ConnectionHandler:
                 self.bg_thread.join()
             if self.dispatch_thread:
                 self.dispatch_thread.join()
-        if self.transport:
-            self.transport.close()
-            self.transport = None
+        if self.connection:
+            self.connection.close()
+            self.connection = None
 
     # =========================================================================
     # Command Sending

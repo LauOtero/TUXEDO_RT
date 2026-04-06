@@ -1,10 +1,10 @@
-# RT Core UART Transport implementation
-# TUXEDO_RT: Implementación de transporte UART / USB Serial
+# RT Core Serial Connection implementation
+# TUXEDO_RT: Implementación de conexión Serial / USB Serial
 import os, logging, serial
-from .base import RTTransport
+from .base import RTConnection
 import util
 
-class UARTTransport(RTTransport):
+class SerialConnection(RTConnection):
     CONFIG_PARAMS = {
         'serial': ('str', None, True),
         'baud': ('int', 250000, False),
@@ -14,7 +14,7 @@ class UARTTransport(RTTransport):
 
     def __init__(self, reactor, serialport, baud, rts=True, usb_optimize=True,
                  mcu_name=""):
-        super(UARTTransport, self).__init__(reactor, mcu_name)
+        super(SerialConnection, self).__init__(reactor, mcu_name)
         self.serialport = serialport
         self.baud = baud
         self.rts = rts
@@ -23,11 +23,11 @@ class UARTTransport(RTTransport):
 
     def open(self):
         """Abre el puerto serial con reintentos y soporte STK500v2"""
-        logging.info("%sStarting UART connect on %s", self.warn_prefix, self.serialport)
+        logging.info("%sStarting Serial connect on %s", self.warn_prefix, self.serialport)
         start_time = self.reactor.monotonic()
         while 1:
             if self.reactor.monotonic() > start_time + 90.:
-                raise Exception(self.warn_prefix + "Unable to connect to UART")
+                raise Exception(self.warn_prefix + "Unable to connect to Serial")
             try:
                 self.serial_dev = serial.Serial(baudrate=self.baud, timeout=0,
                                                exclusive=True)
@@ -59,7 +59,7 @@ class UARTTransport(RTTransport):
         return b'u'
 
     def get_info(self):
-        return "UART %s at %d baud" % (self.serialport, self.baud)
+        return "Serial %s at %d baud" % (self.serialport, self.baud)
 
     def detect_usb_speed(self):
         """TUXEDO_RT: Detecta la velocidad USB a través de sysfs"""
@@ -128,3 +128,4 @@ class UARTTransport(RTTransport):
         res = self.serial_dev.read(4096)
         logging.debug("%sGot %s from stk500v2", self.warn_prefix, repr(res))
         self.serial_dev.baudrate = origbaud
+
