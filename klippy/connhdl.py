@@ -26,12 +26,14 @@ class error(Exception):
 
 # =========================================================================
 # Connection Type Constants (Must match C-side conn_backend.h)
+# Using numeric values for better maintainability
 # =========================================================================
-CONN_TYPE_SERIAL    = b's'
-CONN_TYPE_CAN       = b'c'
-CONN_TYPE_ETHERTUX  = b'e'
-CONN_TYPE_DEBUGFILE = b'f'
-CONN_TYPE_RS485     = b'r'
+CONN_TYPE_SERIAL    = 0x01
+CONN_TYPE_CAN       = 0x02
+CONN_TYPE_ETHERTUX  = 0x03
+CONN_TYPE_DEBUGFILE = 0x04
+CONN_TYPE_RS485     = 0x05
+CONN_TYPE_SPI       = 0x06
 
 class ConnectionHandler:
     """

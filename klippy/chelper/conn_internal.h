@@ -109,7 +109,7 @@ struct conn_manager {
     /* Core */
     struct pollreactor *pr;
     int fd;
-    char conn_type;
+    int conn_type;  /* Changed from char to int for numeric CONN_TYPE_* constants */
     int client_id;
     char mcu_name[MAX_MCU_NAME_LEN];
     

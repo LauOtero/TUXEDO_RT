@@ -10,12 +10,14 @@ struct conn_manager;
 
 /* =========================================================================
  * Connection Type Identifiers
+ * Usamos números para mejor mantenibilidad y coherencia
  * ========================================================================= */
-#define CONN_TYPE_SERIAL    's'
-#define CONN_TYPE_CAN       'c'
-#define CONN_TYPE_ETHERTUX  'e'
-#define CONN_TYPE_DEBUGFILE 'f'
-#define CONN_TYPE_RS485     'r'
+#define CONN_TYPE_SERIAL    0x01
+#define CONN_TYPE_CAN       0x02
+#define CONN_TYPE_ETHERTUX  0x03
+#define CONN_TYPE_DEBUGFILE 0x04
+#define CONN_TYPE_RS485     0x05
+#define CONN_TYPE_SPI       0x06   /* SPI High-Speed (SPI/DSPI/QSPI) */
 
 /* =========================================================================
  * CAN Bus Mode & Autonegotiation Constants
@@ -98,6 +100,7 @@ extern const conn_backend_ops_t conn_serial_backend;
 extern const conn_backend_ops_t conn_can_backend;
 extern const conn_backend_ops_t conn_ethertux_backend;
 extern const conn_backend_ops_t conn_rs485_backend;
+extern const conn_backend_ops_t conn_spi_backend;  /* SPI High-Speed */
 
 /* =========================================================================
  * Factory / Dispatcher
