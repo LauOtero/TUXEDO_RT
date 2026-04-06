@@ -496,6 +496,21 @@ uint8_t gcode_validate_checksum(const uint8_t *line, int32_t len,
     int32_t star_pos, uint32_t expected_crc);
 """
 
+defs_pollreactor = """
+#define PR_NOW   0.
+#define PR_NEVER 9999999999999999.
+struct pollreactor *pollreactor_alloc(int num_fds, int num_timers, void *callback_data);
+void pollreactor_free(struct pollreactor *pr);
+void pollreactor_add_fd(struct pollreactor *pr, int pos, int fd, void *callback, int write_only);
+void pollreactor_add_timer(struct pollreactor *pr, int pos, void *callback);
+double pollreactor_get_timer(struct pollreactor *pr, int pos);
+void pollreactor_update_timer(struct pollreactor *pr, int pos, double waketime);
+void pollreactor_run(struct pollreactor *pr);
+void pollreactor_do_exit(struct pollreactor *pr);
+int pollreactor_is_exit(struct pollreactor *pr);
+int fd_set_non_blocking(int fd);
+"""
+
 defs_all = [
     defs_pyhelper, defs_conn_manager, defs_std, defs_ultracrc, defs_list,
     defs_stepcompress, defs_steppersync, defs_itersolve, defs_trapq, defs_trdispatch,
@@ -503,7 +518,7 @@ defs_all = [
     defs_kin_deltesian, defs_kin_polar, defs_kin_rotary_delta, defs_kin_winch,
     defs_kin_extruder, defs_kin_shaper, defs_kin_idex,
     defs_kin_generic_cartesian, defs_msgblock, defs_kin_ratos_hybrid_corexy,
-    defs_kin_5axis, defs_gcode_parser,
+    defs_kin_5axis, defs_gcode_parser, defs_pollreactor,
 ]
 
 ######################################################################
