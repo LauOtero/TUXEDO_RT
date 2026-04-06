@@ -573,8 +573,10 @@ const conn_backend_ops_t *conn_backend_get_ops(int conn_type) {
         case CONN_TYPE_CAN:       return &conn_can_backend;
         case CONN_TYPE_ETHERTUX:  return &conn_ethertux_backend;
         case CONN_TYPE_RS485:     return &conn_rs485_backend;
-        case CONN_TYPE_SPI:       return &conn_spi_backend;  /* SPI High-Speed */
-        case CONN_TYPE_DEBUGFILE: return NULL; // Debug file uses generic path
+        case CONN_TYPE_SPI:       return &conn_spi_backend;
+        case CONN_TYPE_DEBUGPIPE: return &conn_debugpipe_backend;
+        case CONN_TYPE_DEBUGFILE: return &conn_debugpipe_backend;  /* Legacy alias */
+        case CONN_TYPE_ZCKB_SHM:  return NULL;  /* ZCKB usa path especial zero-copy */
         default: return NULL;
     }
 }

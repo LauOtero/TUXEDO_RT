@@ -18,6 +18,8 @@ struct conn_manager;
 #define CONN_TYPE_DEBUGFILE 0x04
 #define CONN_TYPE_RS485     0x05
 #define CONN_TYPE_SPI       0x06   /* SPI High-Speed (SPI/DSPI/QSPI) */
+#define CONN_TYPE_DEBUGPIPE 0x07   /* Unified DEBUGFILE/PIPE backend */
+#define CONN_TYPE_ZCKB_SHM  0x08   /* Zero-Copy Kernel-Bypass Shared Memory */
 
 /* =========================================================================
  * CAN Bus Mode & Autonegotiation Constants
@@ -101,12 +103,13 @@ extern const conn_backend_ops_t conn_can_backend;
 extern const conn_backend_ops_t conn_ethertux_backend;
 extern const conn_backend_ops_t conn_rs485_backend;
 extern const conn_backend_ops_t conn_spi_backend;  /* SPI High-Speed */
+extern const conn_backend_ops_t conn_debugpipe_backend;  /* DEBUGFILE/PIPE unified */
 
 /* =========================================================================
  * Factory / Dispatcher
  * Devuelve la tabla de operaciones adecuada según el tipo de conexión.
  * Retorna NULL si el tipo no es soportado.
  * ========================================================================= */
-const conn_backend_ops_t *conn_backend_get_ops(char conn_type);
+const conn_backend_ops_t *conn_backend_get_ops(int conn_type);
 
 #endif /* CONN_BACKEND_H */
