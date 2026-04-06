@@ -1,8 +1,8 @@
-# RT Core Transport Interface
-# TUXEDO_RT: Definición de la interfaz base para transportes de tiempo real
+# RT Core Connection Interface
+# TUXEDO_RT: Definición de la interfaz base para conexiones de tiempo real
 
-class RTTransport:
-    # TUXEDO_RT: Diccionario de parámetros que espera este transporte en [mcu]
+class RTConnection:
+    # TUXEDO_RT: Diccionario de parámetros que espera esta conexión en [mcu]
     # Formato: { 'nombre_parametro': (tipo, default_valor, es_requerido) }
     CONFIG_PARAMS = {}
 
@@ -24,7 +24,7 @@ class RTTransport:
         raise NotImplementedError
 
     def get_type(self):
-        """Retorna el tipo de transporte (b'u', b'c', b'f')"""
+        """Retorna el tipo de conexión (b'u', b'c', b'f')"""
         raise NotImplementedError
 
     def get_info(self):
@@ -38,3 +38,4 @@ class RTTransport:
     def get_client_id(self):
         """ID del cliente para CAN o protocolos compartidos (default 0)"""
         return 0
+

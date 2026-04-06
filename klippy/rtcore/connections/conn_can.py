@@ -1,13 +1,13 @@
-# RT Core CAN Transport implementation
-# TUXEDO_RT: Implementación de transporte CAN Bus para Klipper
+# RT Core CAN Connection implementation
+# TUXEDO_RT: Implementación de conexión CAN Bus para Klipper
 import os, logging
 try:
-    from .base import RTTransport
+    from .base import RTConnection
 except ImportError:
-    from base import RTTransport
+    from base import RTConnection
 
 
-class CANTransport(RTTransport):
+class CANConnection(RTConnection):
     CONFIG_PARAMS = {
         'canbus_uuid': ('str', None, True),
         'canbus_interface': ('str', 'can0', False),
@@ -18,7 +18,7 @@ class CANTransport(RTTransport):
     }
 
     def __init__(self, reactor, uuid, nodeid, iface="can0", mcu_name="", canbus_mode="classic", autoneg_retries=3, xl_sdt=1):
-        super(CANTransport, self).__init__(reactor, mcu_name)
+        super(CANConnection, self).__init__(reactor, mcu_name)
         self.uuid_str = uuid
         self.nodeid = nodeid
         self.iface = iface
@@ -54,9 +54,9 @@ class CANTransport(RTTransport):
         
         logging.info("%sStarting CAN connect on %s (uuid: %s)", 
                      self.warn_prefix, self.iface, self.uuid_str)
-        start_time = self._reactor.monotonic()
+        start_time = self.reactor.monotonic()
         while 1:
-            if self._reactor.monotonic() > start_time + 90.:
+            if self.reactor.monotonic() > start_time + 90.:
                 raise Exception(self.warn_prefix + "Unable to connect to CAN")
             try:
                 self.bus = can.interface.Bus(channel=self.iface,
@@ -85,7 +85,7 @@ class CANTransport(RTTransport):
             except (can.CanError, os.error, IOError) as e:
                 logging.warning("%sUnable to open CAN port: %s",
                                 self.warn_prefix, e)
-                self._reactor.pause(self._reactor.monotonic() + 5.)
+                self.reactor.pause(self.reactor.monotonic() + 5.)
                 continue
 
             break
@@ -121,4 +121,5 @@ class CANTransport(RTTransport):
             ffi_lib.serialqueue_set_can_params(serialqueue, mode, self.autoneg_retries, self.xl_sdt)
         except AttributeError:
             logging.warning("chelper: serialqueue_set_can_params not found")
+
 

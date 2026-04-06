@@ -1,4 +1,4 @@
-# RT Core Transport Utilities
+# RT Core Connection Utilities
 # TUXEDO_RT: Funciones de utilidad para resets de hardware y mantenimiento
 import logging, serial
 import util
@@ -39,3 +39,4 @@ def cheetah_reset(serialport, reactor):
         ser.close()
     except:
         logging.exception("Error during cheetah_reset on %s", serialport)
+

@@ -1,21 +1,21 @@
-# RT Core File Transport implementation
-# TUXEDO_RT: Implementación de transporte para modo depuración / archivo
+# RT Core File Connection implementation
+# TUXEDO_RT: Implementación de conexión para modo depuración / archivo
 import logging
-from .base import RTTransport
+from .base import RTConnection
 
-class FileTransport(RTTransport):
+class FileConnection(RTConnection):
     CONFIG_PARAMS = {
         'debugoutput': ('str', None, True),
         'dictionary': ('str', None, True)
     }
 
     def __init__(self, reactor, debugoutput, dictionary, mcu_name=""):
-        super(FileTransport, self).__init__(reactor, mcu_name)
+        super(FileConnection, self).__init__(reactor, mcu_name)
         self.debugoutput = debugoutput
         self.dictionary = dictionary
 
     def open(self):
-        logging.info("%sStarting file transport (debug mode)", self.warn_prefix)
+        logging.info("%sStarting file connection (debug mode)", self.warn_prefix)
         # El archivo ya viene abierto desde mcu.py
         return True
 
@@ -38,3 +38,4 @@ class FileTransport(RTTransport):
     def setup_serialqueue(self, ffi_lib, serialqueue):
         # El procesamiento del diccionario se hace en serialhdl._start_session
         pass
+
