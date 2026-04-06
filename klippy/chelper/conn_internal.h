@@ -153,7 +153,8 @@ struct conn_manager {
     
     /* Backend */
     const conn_backend_ops_t *backend;
-    void *backend_ctx;  // Opaque pointer for backend-specific data
+    void *backend_ctx;  // Opaque pointer for backend-specific data (was backend_data)
+    void *backend_data; /* Legacy alias for backward compatibility with some backends */
     
     /* EtherCAT-specific (only if conn_type == CONN_TYPE_ETHERTUX) */
     ethertux_ctx_t *ethertux;

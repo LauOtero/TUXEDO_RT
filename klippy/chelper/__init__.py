@@ -73,7 +73,9 @@ RISCV32_BASE_FLAGS   = ["-march=rv32gc"]
 ######################################################################
 SOURCE_FILES = [
     'pyhelper.c', 'ultracrc.c', 'ultracrc_tables.c', 
-    'conn_manager.c', 'conn_serial.c', 'conn_can.c', 'conn_ethertux.c', 'conn_rs485.c', 'conn_spi.c',
+    'zckb_shm.c',  # Zero-Copy Kernel-Bypass Shared Memory
+    'conn_manager.c', 'conn_serial.c', 'conn_can.c', 'conn_ethertux.c', 
+    'conn_rs485.c', 'conn_spi.c', 'conn_debugpipe.c',
     'stepcompress.c', 'steppersync.c', 'itersolve.c',
     'trapq.c', 'pollreactor.c', 'msgblock.c', 'trdispatch.c',
     'kin_cartesian.c', 'kin_corexy.c', 'kin_corexz.c', 'kin_delta.c',
@@ -86,6 +88,7 @@ DEST_LIB = "c_helper.so"
 
 OTHER_FILES = [
     'list.h', 'conn_manager.h', 'conn_backend.h', 'conn_internal.h',  # ← New Headers
+    'zckb_shm.h',  # Zero-Copy Kernel-Bypass header
     'stepcompress.h', 'steppersync.h', 'itersolve.h',
     'pyhelper.h', 'trapq.h', 'pollreactor.h', 'msgblock.h',
     'compiler.h', 'ultracrc.h', 'ultracrc_tables.h', 'gcode_parser.h',
@@ -342,6 +345,16 @@ void five_axis_stepper_free(struct stepper_kinematics *sk);
 
 defs_conn_manager = """
 #define MESSAGE_MAX 4096
+/* Connection Type Constants (deben coincidir con conn_backend.h) */
+#define CONN_TYPE_SERIAL    0x01
+#define CONN_TYPE_CAN       0x02
+#define CONN_TYPE_ETHERTUX  0x03
+#define CONN_TYPE_DEBUGFILE 0x04
+#define CONN_TYPE_RS485     0x05
+#define CONN_TYPE_SPI       0x06
+#define CONN_TYPE_DEBUGPIPE 0x07
+#define CONN_TYPE_ZCKB_SHM  0x08
+
 struct pull_queue_message {
     uint8_t msg[MESSAGE_MAX];
     int len;
@@ -379,6 +392,15 @@ int conn_set_fifo_priority(struct conn_manager *cm, int priority);
 int conn_set_irq_affinity(struct conn_manager *cm, const int *cpu_list, int count);
 void conn_get_stats(struct conn_manager *cm, char *buf, int len);
 int conn_extract_old(struct conn_manager *cm, int sentq, struct pull_queue_message *q, int max);
+
+/* ZCKB Shared Memory Functions */
+void *zckb_create_context(const char *name, int is_master);
+void zckb_destroy_context(void *ctx);
+int zckb_map_region(void *ctx, const char *name, uint64_t size);
+void zckb_unmap_region(void *ctx, int region_id);
+int zckb_ring_push(void *region, const void *data, uint32_t len);
+int zckb_ring_pop(void *region, void *buffer, uint32_t max_len);
+uint64_t zckb_get_timestamp_ns(void);
 """
 
 defs_trdispatch = """
