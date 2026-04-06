@@ -567,12 +567,13 @@ __visible int conn_extract_old(struct conn_manager *cm, int sentq, struct pull_q
 }
 
 /* ─── Backend Factory ─────────────────────────────────────────────────── */
-const conn_backend_ops_t *conn_backend_get_ops(char conn_type) {
+const conn_backend_ops_t *conn_backend_get_ops(int conn_type) {
     switch (conn_type) {
         case CONN_TYPE_SERIAL:    return &conn_serial_backend;
         case CONN_TYPE_CAN:       return &conn_can_backend;
         case CONN_TYPE_ETHERTUX:  return &conn_ethertux_backend;
         case CONN_TYPE_RS485:     return &conn_rs485_backend;
+        case CONN_TYPE_SPI:       return &conn_spi_backend;  /* SPI High-Speed */
         case CONN_TYPE_DEBUGFILE: return NULL; // Debug file uses generic path
         default: return NULL;
     }

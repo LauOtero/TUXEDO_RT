@@ -73,7 +73,7 @@ RISCV32_BASE_FLAGS   = ["-march=rv32gc"]
 ######################################################################
 SOURCE_FILES = [
     'pyhelper.c', 'ultracrc.c', 'ultracrc_tables.c', 
-    'conn_manager.c', 'conn_serial.c', 'conn_can.c', 'conn_ethertux.c', 'conn_rs485.c',
+    'conn_manager.c', 'conn_serial.c', 'conn_can.c', 'conn_ethertux.c', 'conn_rs485.c', 'conn_spi.c',
     'stepcompress.c', 'steppersync.c', 'itersolve.c',
     'trapq.c', 'pollreactor.c', 'msgblock.c', 'trdispatch.c',
     'kin_cartesian.c', 'kin_corexy.c', 'kin_corexz.c', 'kin_delta.c',
@@ -372,6 +372,8 @@ void conn_set_can_params(struct conn_manager *cm, int mode, int retries, int xl_
 void conn_set_usb_profile(struct conn_manager *cm, int max_pending_blocks);
 void conn_set_ethertux_params(struct conn_manager *cm, uint16_t alias, uint16_t position,
     uint32_t vendor_id, uint32_t product_id, uint32_t cycle_time_ns);
+void conn_set_spi_params(struct command_queue *cq, uint32_t speed_hz,
+    uint8_t mode, uint8_t hw_crc, uint8_t dma_enabled);
 int conn_pin_to_cpu(struct conn_manager *cm, int cpu_id);
 int conn_set_fifo_priority(struct conn_manager *cm, int priority);
 int conn_set_irq_affinity(struct conn_manager *cm, const int *cpu_list, int count);

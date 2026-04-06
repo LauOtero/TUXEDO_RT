@@ -42,7 +42,7 @@ extern "C" {
 #endif
 
 /* Lifecycle */
-struct conn_manager *conn_alloc(int fd, char conn_type, int client_id, const char name[MAX_MCU_NAME_LEN]);
+struct conn_manager *conn_alloc(int fd, int conn_type, int client_id, const char name[MAX_MCU_NAME_LEN]);
 void conn_exit(struct conn_manager *cm);
 void conn_free(struct conn_manager *cm);
 
