@@ -56,7 +56,9 @@ class SerialConnection(RTConnection):
         return -1
 
     def get_type(self):
-        return b'u'
+        """Retorna tipo de conexión: CONN_TYPE_SERIAL (0x01)"""
+        from klippy import connhdl
+        return connhdl.CONN_TYPE_SERIAL
 
     def get_info(self):
         return "Serial %s at %d baud" % (self.serialport, self.baud)

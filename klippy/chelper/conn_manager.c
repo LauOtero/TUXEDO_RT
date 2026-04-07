@@ -241,7 +241,7 @@ static void *background_thread(void *data) {
 
 /* ─── Public API: Allocation ──────────────────────────────────────────── */
 __visible struct conn_manager *
-conn_alloc(int fd, char conn_type, int client_id, const char name[MAX_MCU_NAME_LEN])
+conn_alloc(int fd, int conn_type, int client_id, const char name[MAX_MCU_NAME_LEN])
 {
     struct conn_manager *cm = malloc(sizeof(*cm));
     if (!cm) return NULL;

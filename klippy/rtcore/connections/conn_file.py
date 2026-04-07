@@ -30,7 +30,9 @@ class FileConnection(RTConnection):
         return -1
 
     def get_type(self):
-        return b'f'
+        """Retorna tipo de conexión: CONN_TYPE_DEBUGFILE (0x04)"""
+        from klippy import connhdl
+        return connhdl.CONN_TYPE_DEBUGFILE
 
     def get_info(self):
         return "File (debug output)"

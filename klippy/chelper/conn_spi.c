@@ -124,8 +124,8 @@ static __attribute__((hot)) int spi_write(struct conn_manager *cm, const void *b
     
     /* Si DMA está habilitado, configurar flags */
     if (data->dma_enabled) {
-        xfer.tx_nbits = SPI_NBITS_SINGLE;  // O SPI_NBITS_DUAL/QUAD si soportado
-        xfer.rx_nbits = SPI_NBITS_SINGLE;
+        xfer.tx_nbits = 1;  // Single wire mode (default)
+        xfer.rx_nbits = 1;  // Single wire mode (default)
     }
     
     /* Ejecutar transferencia IOCTL */

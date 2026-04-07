@@ -25,17 +25,19 @@ class error(Exception):
     pass
 
 # =========================================================================
-# Connection Type Constants (Must match C-side conn_backend.h)
-# Using numeric values for better maintainability
+# Connection Type Constants
+# Importadas directamente desde la librería C (chelper) para garantizar
+# consistencia entre Python y C. No se definen localmente.
 # =========================================================================
-CONN_TYPE_SERIAL    = 0x01
-CONN_TYPE_CAN       = 0x02
-CONN_TYPE_ETHERTUX  = 0x03
-CONN_TYPE_DEBUGFILE = 0x04
-CONN_TYPE_RS485     = 0x05
-CONN_TYPE_SPI       = 0x06
-CONN_TYPE_DEBUGPIPE = 0x07
-CONN_TYPE_ZCKB_SHM  = 0x08
+# Se inicializan después de obtener ffi_lib en __init__
+CONN_TYPE_SERIAL = None
+CONN_TYPE_CAN = None
+CONN_TYPE_ETHERTUX = None
+CONN_TYPE_DEBUGFILE = None
+CONN_TYPE_RS485 = None
+CONN_TYPE_SPI = None
+CONN_TYPE_DEBUGPIPE = None
+CONN_TYPE_ZCKB_SHM = None
 
 class ConnectionHandler:
     """
@@ -58,6 +60,19 @@ class ConnectionHandler:
         
         # C Interface (conn_manager)
         self.ffi_main, self.ffi_lib = chelper.get_ffi()
+        
+        # Inicializar constantes CONN_TYPE desde la librería C
+        global CONN_TYPE_SERIAL, CONN_TYPE_CAN, CONN_TYPE_ETHERTUX, CONN_TYPE_DEBUGFILE
+        global CONN_TYPE_RS485, CONN_TYPE_SPI, CONN_TYPE_DEBUGPIPE, CONN_TYPE_ZCKB_SHM
+        CONN_TYPE_SERIAL = self.ffi_lib.CONN_TYPE_SERIAL
+        CONN_TYPE_CAN = self.ffi_lib.CONN_TYPE_CAN
+        CONN_TYPE_ETHERTUX = self.ffi_lib.CONN_TYPE_ETHERTUX
+        CONN_TYPE_DEBUGFILE = self.ffi_lib.CONN_TYPE_DEBUGFILE
+        CONN_TYPE_RS485 = self.ffi_lib.CONN_TYPE_RS485
+        CONN_TYPE_SPI = self.ffi_lib.CONN_TYPE_SPI
+        CONN_TYPE_DEBUGPIPE = self.ffi_lib.CONN_TYPE_DEBUGPIPE
+        CONN_TYPE_ZCKB_SHM = self.ffi_lib.CONN_TYPE_ZCKB_SHM
+        
         self.conn_mgr: Any = None
         self.default_cmd_queue = self.alloc_command_queue()
         self.stats_buf = self.ffi_main.new('char[4096]')

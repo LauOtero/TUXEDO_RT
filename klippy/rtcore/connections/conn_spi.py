@@ -168,11 +168,9 @@ class SPIConnection(RTConnection):
     
     def get_type(self):
         """Retorna tipo de conexión: CONN_TYPE_SPI (0x06)"""
-        # Import here to avoid circular dependency
-        import sys
-        sys.path.insert(0, '/workspace/klippy')
-        from connhdl import CONN_TYPE_SPI
-        return CONN_TYPE_SPI
+        # Importar directamente desde chelper para garantizar consistencia
+        from klippy import connhdl
+        return connhdl.CONN_TYPE_SPI
     
     def get_client_id(self):
         """SPI no usa client_id (conexión punto a punto)"""

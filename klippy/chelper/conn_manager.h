@@ -2,6 +2,7 @@
 #define CONN_MANAGER_H
 
 #include <stdint.h>
+#include <stddef.h>
 #include "list.h"
 #include "msgblock.h"
 
@@ -9,6 +10,8 @@
 #define MAX_CLOCK               0x7fffffffffffffffLL
 #define BACKGROUND_PRIORITY_CLOCK 0x7fffffff00000000LL
 #define MAX_MCU_NAME_LEN        16
+#define MIN_RTO                 0.025
+#define MAX_RTO                 2.0
 
 /* ─── Forward Declarations ────────────────────────────────────────────── */
 struct conn_manager;

@@ -41,7 +41,9 @@ class PipeConnection(RTConnection):
         return -1
 
     def get_type(self):
-        return b'u' # Los pipes se tratan como UART/Stream en serialqueue
+        """Retorna tipo de conexión: CONN_TYPE_DEBUGPIPE (0x07)"""
+        from klippy import connhdl
+        return connhdl.CONN_TYPE_DEBUGPIPE
 
     def get_info(self):
         return "Pipe %s" % (self.filename,)

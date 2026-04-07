@@ -102,7 +102,9 @@ class CANConnection(RTConnection):
         return -1
 
     def get_type(self):
-        return b'c'
+        """Retorna tipo de conexión: CONN_TYPE_CAN (0x02)"""
+        from klippy import connhdl
+        return connhdl.CONN_TYPE_CAN
 
     def get_info(self):
         return "CAN on %s (nodeid: 0x%x)" % (self.iface, self.nodeid)

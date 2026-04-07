@@ -79,4 +79,6 @@ uint64_t clock_from_time(struct clock_estimate *ce, double time);
 void clock_fill(struct clock_estimate *ce, double est_freq, double conv_time
                 , uint64_t conv_clock, uint64_t last_clock);
 
+
+void msgblock_pool_init(void);
 #endif // msgblock.h

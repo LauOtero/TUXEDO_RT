@@ -82,6 +82,7 @@ SOURCE_FILES = [
     'kin_deltesian.c', 'kin_polar.c', 'kin_rotary_delta.c', 'kin_winch.c',
     'kin_extruder.c', 'kin_shaper.c', 'kin_idex.c', 'kin_generic.c',
     'kin_ratos_hybrid_corexy.c', 'kin_5axis.c', 'gcode_parser.c',
+    'kinematics_core.c', 'ffi_bindings.c',  # TUXEDO_RT: Nuevo núcleo matemático y FFI
 ]
 
 DEST_LIB = "c_helper.so"
