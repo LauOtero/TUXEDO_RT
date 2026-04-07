@@ -1,7 +1,13 @@
-#include "conn_manager.h"
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdint.h>
+
+#include "conn_manager.h"
+#include "conn_backend.h"
+#include "conn_internal.h"
+#include "list.h"
+#include "msgblock.h"
 
 /* Inicialización */
 static int debugpipe_init(struct conn_manager *cm) {

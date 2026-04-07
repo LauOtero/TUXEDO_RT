@@ -1,8 +1,8 @@
 #ifndef POLLREACTOR_H
 #define POLLREACTOR_H
 
-#define PR_NOW   0.
-#define PR_NEVER 9999999999999999.
+#define PR_NOW   0.0
+#define PR_NEVER 9999999999999999.0
 
 struct pollreactor *pollreactor_alloc(int num_fds, int num_timers
                                       , void *callback_data);

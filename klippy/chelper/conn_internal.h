@@ -167,4 +167,14 @@ struct conn_manager {
 
 /* ─── Internal Helpers ────────────────────────────────────────────────── */
 
+/* Inline helper for appending messages to receiver and waking up waiters */
+static __always_inline void receive_append_wake(receiver_t *receiver, struct list_head *msgs) {
+    int dokick = 0;
+    pthread_mutex_lock(&receiver->lock);
+    list_join_tail(msgs, &receiver->queue);
+    if (receiver->waiting) { receiver->waiting = 0; dokick = 1; }
+    pthread_mutex_unlock(&receiver->lock);
+    if (dokick) pthread_cond_signal(&receiver->cond);
+}
+
 #endif /* CONN_INTERNAL_H */
