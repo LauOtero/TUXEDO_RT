@@ -42,6 +42,17 @@ typedef struct {
     uint32_t rx_dma_buf_size; // RX DMA buffer size
 } spi_backend_data_t;
 
+/* SPI_NBITS_* constants for DMA transfers (Linux kernel compatibility) */
+#ifndef SPI_NBITS_SINGLE
+#define SPI_NBITS_SINGLE 1
+#endif
+#ifndef SPI_NBITS_DUAL
+#define SPI_NBITS_DUAL 2
+#endif
+#ifndef SPI_NBITS_QUAD
+#define SPI_NBITS_QUAD 4
+#endif
+
 /* ─── Lifecycle ───────────────────────────────────────────────────────── */
 static int spi_init(struct conn_manager *cm) {
     spi_backend_data_t *data = malloc(sizeof(*data));
@@ -61,7 +72,7 @@ static int spi_init(struct conn_manager *cm) {
     cm->backend_data = data;
     
     /* SPI no requiere autonegociación compleja como CAN */
-    cm->rto = MIN_RTO;  // Timeout mínimo para máxima reactividad
+    cm->rto = 0.025;  // Timeout mínimo para máxima reactividad
     
     logging_info("SPI backend initialized: %d Hz, mode=%d, bits=%d",
                 data->speed_hz, data->mode, data->bits_per_word);
@@ -78,7 +89,6 @@ static void spi_exit(struct conn_manager *cm) {
 
 /* ─── I/O Operations ──────────────────────────────────────────────────── */
 static __attribute__((hot)) int spi_read(struct conn_manager *cm, double eventtime) {
-    spi_backend_data_t *data = cm->backend_data;
     uint8_t buf[MESSAGE_MAX];
     int ret;
     
@@ -234,12 +244,11 @@ const conn_backend_ops_t conn_spi_backend = {
 };
 
 /* ─── Exported Functions for Python FFI ───────────────────────────────── */
-__visible void serialqueue_set_spi_params(struct command_queue *cq,
+__visible void serialqueue_set_spi_params(struct conn_manager *cm,
                                           uint32_t speed_hz,
                                           uint8_t mode,
                                           uint8_t hw_crc,
                                           uint8_t dma_enabled) {
-    struct conn_manager *cm = cq->cm;
     if (!cm || !cm->backend_data) return;
     
     spi_backend_data_t *data = cm->backend_data;

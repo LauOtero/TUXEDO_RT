@@ -68,15 +68,6 @@ static __always_inline void conn_debug_queue_add(struct list_head *root, struct 
     message_free(old);
 }
 
-static __always_inline void receive_append_wake(receiver_t *receiver, struct list_head *msgs) {
-    int dokick = 0;
-    pthread_mutex_lock(&receiver->lock);
-    list_join_tail(msgs, &receiver->queue);
-    if (receiver->waiting) { receiver->waiting = 0; dokick = 1; }
-    pthread_mutex_unlock(&receiver->lock);
-    if (dokick) pthread_cond_signal(&receiver->cond);
-}
-
 static __always_inline void conn_kick_bg_thread(struct conn_manager *cm) {
     int ret = write(cm->tx_sched.pipe_fds[1], ".", 1);
     if (ret < 0) report_errno("pipe write", ret);
@@ -241,7 +232,7 @@ static void *background_thread(void *data) {
 
 /* ─── Public API: Allocation ──────────────────────────────────────────── */
 __visible struct conn_manager *
-conn_alloc(int fd, char conn_type, int client_id, const char name[MAX_MCU_NAME_LEN])
+conn_alloc(int fd, int conn_type, int client_id, const char name[MAX_MCU_NAME_LEN])
 {
     struct conn_manager *cm = malloc(sizeof(*cm));
     if (!cm) return NULL;

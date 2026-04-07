@@ -497,8 +497,6 @@ uint8_t gcode_validate_checksum(const uint8_t *line, int32_t len,
 """
 
 defs_pollreactor = """
-#define PR_NOW   0.
-#define PR_NEVER 9999999999999999.
 struct pollreactor *pollreactor_alloc(int num_fds, int num_timers, void *callback_data);
 void pollreactor_free(struct pollreactor *pr);
 void pollreactor_add_fd(struct pollreactor *pr, int pos, int fd, void *callback, int write_only);
