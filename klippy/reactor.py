@@ -278,90 +278,76 @@ class SelectReactor:
         timer_handler.waketime = self.NEVER
 
     def _check_timers(self, eventtime: float, busy: bool) -> float:
-        """Check and execute expired timers. Returns the delay until the next event."""
-        # Deadlock check: has it been too long since last successful dispatch?
-        if eventtime - self._stats['last_dispatch_time'] > self._deadlock_threshold:
-            logging.warning("Reactor: Potential deadlock/blocking detected! "
-                            "Last progress was %.3fs ago.", 
-                            eventtime - self._stats['last_dispatch_time'])
-            # Reset time to avoid continuous warnings
-            self._stats['last_dispatch_time'] = eventtime
-
-        if eventtime < self._next_timer:
-            if busy:
-                return 0.
-            if self._check_gc(eventtime):
-                return 0.
-            return min(1., max(.001, self._next_timer - eventtime))
-        
-        # Mark activity
+        """
+        Process all timers that have expired.
+        TUXEDO_RT: Optimized hot path with minimal Python overhead.
+        Returns the timeout until the next timer or 0 if busy.
+        """
         self._stats['last_dispatch_time'] = eventtime
         
-        # Periodic cleanup of unregistered timers (every 1000 dispatches if heap is large)
-        if len(self._timers) > 2000 and self._timer_counter % 1000 == 0:
-            self._cleanup_timers()
-
-        self._next_timer = self.NEVER
-        g_dispatch = self._g_dispatch
+        # Fast path: check if any timers need processing
+        if eventtime >= self._next_timer:
+            # Find and run pending timers
+            self._next_timer = self.NEVER
+            timers = self._timers
+            
+            while timers and timers[0].waketime <= eventtime:
+                timer_handler = heapq.heappop(timers)
+                if timer_handler.waketime == self.NEVER:
+                    # Timer was unregistered (lazy removal)
+                    continue
+                
+                # Execute callback and measure latency
+                start_callback = self.monotonic()
+                try:
+                    new_waketime = timer_handler.callback(eventtime)
+                except:
+                    logging.exception("Timer callback error")
+                    new_waketime = self.NEVER
+                
+                callback_duration = self.monotonic() - start_callback
+                self._stats['total_callback_duration'] += callback_duration
+                self._stats['max_callback_duration'] = max(
+                    self._stats['max_callback_duration'], callback_duration
+                )
+                
+                # Track latency for watchdog
+                if callback_duration > self._watchdog_threshold:
+                    logging.warning(
+                        f"Timer callback took {callback_duration*1000:.2f}ms "
+                        f"(threshold: {self._watchdog_threshold*1000:.1f}ms)"
+                    )
+                
+                self._stats['timers_processed'] += 1
+                
+                # Re-schedule timer if needed
+                if new_waketime != self.NEVER:
+                    timer_handler.waketime = new_waketime
+                    timer_handler.timer_is_running = False
+                    heapq.heappush(timers, timer_handler)
+                else:
+                    timer_handler.timer_is_running = False
+                
+                if new_waketime < self._next_timer:
+                    self._next_timer = new_waketime
+            
+            busy = True
         
-        # Process timers in batches to allow I/O to be interleaved
-        batch_count = 0
-        while self._timers and batch_count < 100:
-            t = self._timers[0]
-            waketime = t.waketime
-            
-            if waketime == self.NEVER:
-                heapq.heappop(self._timers)
-                continue
-                
-            if eventtime < waketime:
-                self._next_timer = waketime
-                break
-                
-            heapq.heappop(self._timers)
-            batch_count += 1
-            self._stats['timers_processed'] += 1
-            
-            # Latency tracking
-            latency = eventtime - waketime
-            if latency > 0.0001:
-                self._latency_stats.append(latency)
-                if latency > self._max_latency:
-                    self._max_latency = latency
-            
-            t.timer_is_running = True
-            start_time = eventtime
-            new_waketime = t.callback(eventtime)
-            end_time = self.monotonic()
-            t.timer_is_running = False
-            
-            # Record execution time
-            duration = end_time - start_time
-            self._stats['total_callback_duration'] += duration
-            if duration > self._stats['max_callback_duration']:
-                self._stats['max_callback_duration'] = duration
-            
-            # Watchdog: Warn if a callback took too long
-            if duration > self._watchdog_threshold:
-                logging.warning("Reactor: Timer callback took %.3fs (waketime=%.3f)", 
-                                duration, waketime)
-            
-            if new_waketime != self.NEVER:
-                t.waketime = new_waketime
-                heapq.heappush(self._timers, t)
-                self._next_timer = min(self._next_timer, new_waketime)
-            
-            if g_dispatch is not self._g_dispatch:
-                self._stats['greenlet_switches'] += 1
-                if self._timers:
-                    self._next_timer = min(self._next_timer, self._timers[0].waketime)
-                self._end_greenlet(g_dispatch)
-                return 0.
-                
-        if self._timers and self._next_timer == self.NEVER:
-            self._next_timer = self._timers[0].waketime
+        if busy:
+            return 0.0
+        
+        # Calculate sleep duration (in milliseconds for poll/epoll)
+        timeout = (self._next_timer - eventtime) * 1000.0
+        if timeout < 1.0:
+            return 0.001  # Minimum 1ms to avoid busy-waiting
+        elif timeout > 1000.0:
+            return 1.0  # Maximum 1s to allow periodic GC checks
+        return timeout / 1000.0  # Convert back to seconds
 
-        return 0.
+    def _cleanup_timers(self):
+        """Periodic cleanup of unregistered timers (lazy removal)."""
+        self._timers = [t for t in self._timers if t.waketime != self.NEVER]
+        heapq.heapify(self._timers)
 
     def completion(self) -> ReactorCompletion:
         return ReactorCompletion(self)

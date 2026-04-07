@@ -2,6 +2,7 @@
 #define CONN_MANAGER_H
 
 #include <stdint.h>
+#include <stddef.h>
 #include "list.h"
 #include "msgblock.h"
 
