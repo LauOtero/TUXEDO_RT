@@ -210,6 +210,21 @@ pytest tests/test_mathutil.py -v
 pytest tests/test_plugin_manager.py -v
 ```
 
+### Tests de Optimización TUXEDO_RT
+
+```bash
+# Usando el script de compilación y tests (recomendado)
+bash scripts/build_and_test.sh --all
+
+# Solo tests unitarios con coverage
+bash scripts/build_and_test.sh --coverage
+
+# Tests específicos de optimización
+pytest tests/test_unit_optimizations.py -v --cov=klippy.util
+pytest tests/test_integration_optimizations.py -v
+pytest tests/test_stress.py -v
+```
+
 ### Tests Funcionales
 
 ```bash
@@ -221,6 +236,19 @@ python3 tests/test_serialhdl_functional.py
 
 # Pruebas de tolerancia a fallos
 python3 tests/test_fault_tolerance.py
+```
+
+### Benchmark de Rendimiento
+
+```bash
+# Benchmark de VLQ batch
+python3 tests/benchmark_msgblock.py
+
+# Benchmark de util (get_monotonic)
+python3 tests/benchmark_util.py
+
+# Todos los benchmarks
+bash scripts/build_and_test.sh --benchmarks
 ```
 
 ---

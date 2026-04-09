@@ -791,7 +791,7 @@ class ExtraManager:
                     self.logger.debug(f"Plugin '{section_name}' cargado vía ExtraInterface (optimized).")
 
                 # 3. Patrón Legacy Klipper (Compatibilidad hacia atrás)
-                else:
+                elif hasattr(module, 'load_config') or hasattr(module, 'load_config_prefix'):
                     legacy_inst = None
                     section_parts = section_name.split()
                     if len(section_parts) > 1 and hasattr(module, 'load_config_prefix'):

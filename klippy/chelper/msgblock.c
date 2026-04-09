@@ -121,6 +121,51 @@ error: ;
      *pp = p;
      return v;
  }
+
+ // Encode multiple integers as VLQ into output buffer (batch operation)
+ // Returns the number of bytes written
+ // O(n) complexity where n = total bytes for all values
+ int __visible
+ msgblock_encode_int_batch(uint8_t *out, const uint32_t *vals, int count)
+ {
+     uint8_t *p = out;
+     for (int i = 0; i < count; i++) {
+         uint32_t v = vals[i];
+         int32_t sv = (int32_t)v;
+         if (sv < (3L<<5)  && sv >= -(1L<<5))  goto f4;
+         if (sv < (3L<<12) && sv >= -(1L<<12)) goto f3;
+         if (sv < (3L<<19) && sv >= -(1L<<19)) goto f2;
+         if (sv < (3L<<26) && sv >= -(1L<<26)) goto f1;
+         *p++ = (v>>28) | 0x80;
+     f1: *p++ = ((v>>21) & 0x7f) | 0x80;
+     f2: *p++ = ((v>>14) & 0x7f) | 0x80;
+     f3: *p++ = ((v>>7) & 0x7f) | 0x80;
+     f4: *p++ = v & 0x7f;
+     }
+     return p - out;
+ }
+
+ // Parse multiple integers from VLQ buffer (batch operation)
+ // Returns 0 on success, -1 on error
+ // O(n) complexity where n = total bytes consumed
+ int __visible
+ msgblock_parse_int_batch(uint32_t *vals, uint8_t **pp, int count)
+ {
+     uint8_t *p = *pp;
+     for (int i = 0; i < count; i++) {
+         uint8_t c = *p++;
+         uint32_t v = c & 0x7f;
+         if ((c & 0x60) == 0x60)
+             v |= -0x20;
+         while (c & 0x80) {
+             c = *p++;
+             v = (v<<7) | (c & 0x7f);
+         }
+         vals[i] = v;
+     }
+     *pp = p;
+     return 0;
+ }
  
  // Parse the VLQ contents of a message
  int __visible

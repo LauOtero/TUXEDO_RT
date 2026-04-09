@@ -107,9 +107,9 @@ class SerialConnection(RTConnection):
                 logging.debug("%sUSB speed not detected or not applicable (speed=%s), using default payload", self.warn_prefix, speed)
 
         try:
-            ffi_lib.serialqueue_set_usb_profile(serialqueue, max_blocks)
+            ffi_lib.conn_set_usb_profile(serialqueue, max_blocks)
         except AttributeError:
-            logging.warning("%schelper: serialqueue_set_usb_profile not found", self.warn_prefix)
+            logging.warning("%schelper: conn_set_usb_profile not found", self.warn_prefix)
 
     def stk500v2_leave(self):
         """Intenta sacar un AVR stk500v2 del modo programador"""

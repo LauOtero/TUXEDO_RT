@@ -391,6 +391,7 @@ int conn_pin_to_cpu(struct conn_manager *cm, int cpu_id);
 int conn_set_fifo_priority(struct conn_manager *cm, int priority);
 int conn_set_irq_affinity(struct conn_manager *cm, const int *cpu_list, int count);
 void conn_get_stats(struct conn_manager *cm, char *buf, int len);
+void conn_get_rtt_stats(struct conn_manager *cm, double *srtt, double *rttvar, double *rto);
 int conn_extract_old(struct conn_manager *cm, int sentq, struct pull_queue_message *q, int max);
 
 /* ZCKB Shared Memory Functions */
@@ -426,6 +427,9 @@ defs_pyhelper = """
 void set_python_logging_callback(void (*func)(const char *));
 double get_monotonic(void);
 int set_thread_name(char name[16]);
+double stats_mean(const double *data, int32_t count);
+double stats_variance(const double *data, int32_t count);
+double stats_stddev(const double *data, int32_t count);
 """
 
 defs_std = """
@@ -476,7 +480,9 @@ void msgblock_pool_init(void);
 uint16_t msgblock_crc16_ccitt(uint8_t *buf, int len);
 int msgblock_check(uint8_t *need_sync, uint8_t *buf, int buf_len);
 uint8_t *msgblock_encode_int(uint8_t *p, uint32_t v);
+int msgblock_encode_int_batch(uint8_t *out, uint32_t *vals, int count);
 uint32_t msgblock_parse_int(uint8_t **pp);
+int msgblock_parse_int_batch(uint32_t *vals, uint8_t **pp, int count);
 int msgblock_decode(uint32_t *data, int data_len, uint8_t *msg, int msg_len);
 """
 

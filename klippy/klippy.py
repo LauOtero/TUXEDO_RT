@@ -14,7 +14,7 @@ from rtcore.rt_core import RealTimeCore
 from i18n import init_i18n, I18nSystem, _
 from rtcore.fault_tolerance import FaultTolerantCore
 from extra_manager import ExtraManager
-from rtcore.memory_manager import ObjectFactory
+from rtcore.memory_manager import RTMemoryManager
 
 message_ready = "Printer is ready"
 
@@ -51,7 +51,7 @@ class Printer:
         self.fault_tolerance.start_monitoring()
         
         # TUXEDO_RT: Fábrica de memoria determinista
-        self.memory_factory = ObjectFactory()
+        self.memory_factory = RTMemoryManager()
         
         # TUXEDO_RT: Nuevo gestor de plugins (Extras)
         self.plugin_manager = ExtraManager(self)

@@ -1,0 +1,158 @@
+name: Redundancy Audit & Performance
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'klippy/**/*.py'
+      - 'klippy/**/*.c'
+      - 'klippy/chelper/**'
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    - cron: '0 0 * * 0'
+
+jobs:
+  redundancy-check:
+    name: Redundancy Detection
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov
+
+      - name: Run redundancy detection
+        run: |
+          python scripts/detect_redundancy.py
+        continue-on-error: true
+
+      - name: Check for critical redundancies
+        run: |
+          if python scripts/detect_redundancy.py 2>&1 | grep -q "CRITICAL"; then
+            echo "⚠️ Critical redundancies detected!"
+            exit 1
+          fi
+          echo "✅ No critical redundancies found"
+
+  benchmark-tests:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install chelper dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc gcc-arm-none-eabi
+
+      - name: Build chelper
+        run: |
+          cd klippy/chelper
+          python3 __init__.py
+        continue-on-error: true
+
+      - name: Run G-code benchmark
+        run: |
+          python tests/benchmark_redundancy.py
+        continue-on-error: true
+
+      - name: Run RTT benchmark
+        run: |
+          python tests/benchmark_rtt.py
+        continue-on-error: true
+
+      - name: Run mathutil benchmark
+        run: |
+          python tests/benchmark_mathutil.py
+        continue-on-error: true
+
+  linting:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install linting tools
+        run: |
+          pip install ruff flake8 black
+
+      - name: Run ruff linter
+        run: |
+          ruff check klippy/ --select=E,F,W --ignore=E501
+        continue-on-error: true
+
+      - name: Run flake8
+        run: |
+          flake8 klippy/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        continue-on-error: true
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install pytest pytest-cov
+
+      - name: Run unit tests
+        run: |
+          pytest tests/ -v --cov=klippy --cov-report=term-missing
+        continue-on-error: true
+
+      - name: Check coverage
+        run: |
+          coverage report --fail-under=75
+        continue-on-error: true
+
+  metrics-report:
+    name: Generate Metrics Report
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Generate report
+        run: |
+          echo "# Weekly Metrics Report" > metrics_report.md
+          echo "## Date: $(date)" >> metrics_report.md
+          echo "## Redundancy Check" >> metrics_report.md
+          python scripts/detect_redundancy.py >> metrics_report.md 2>&1 || true
+          echo "## Benchmark Results" >> metrics_report.md
+          python tests/benchmark_redundancy.py >> metrics_report.md 2>&1 || true
+          cat metrics_report.md
+
+      - name: Upload report
+        uses: actions/upload-artifact@v3
+        with:
+          name: weekly-metrics-report
+          path: metrics_report.md

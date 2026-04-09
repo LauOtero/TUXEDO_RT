@@ -299,10 +299,10 @@ static int (*gp_resolve_parser(void))(const uint8_t*, int32_t, GCodeParseResult*
 #endif
     return gp_parse_scalar;
 }
-__hot int parse_gcode_line_fast(const uint8_t *line, int32_t len, GCodeParseResult *out)
+__visible __hot int parse_gcode_line_fast(const uint8_t *line, int32_t len, GCodeParseResult *out)
     __attribute__((ifunc("gp_resolve_parser")));
 #else
-__hot int parse_gcode_line_fast(const uint8_t *line, int32_t len, GCodeParseResult *out) {
+__visible __hot int parse_gcode_line_fast(const uint8_t *line, int32_t len, GCodeParseResult *out) {
     return gp_parse_scalar(line, len, out);
 }
 #endif
@@ -310,7 +310,7 @@ __hot int parse_gcode_line_fast(const uint8_t *line, int32_t len, GCodeParseResu
 /* ============================================================================
  * UTILITY FUNCTIONS (Real-Time Safe)
  * ============================================================================ */
-__cold void gcode_parser_warmup(void) {
+__visible __cold void gcode_parser_warmup(void) {
     volatile uint8_t dummy = GCODE_CHAR_CLASS[0];
     (void)dummy;
     ultracrc_warmup();
@@ -320,7 +320,7 @@ __cold void gcode_parser_warmup(void) {
 #endif
 }
 
-__hot uint8_t gcode_validate_checksum(const uint8_t *line, int32_t len,
+__visible __hot uint8_t gcode_validate_checksum(const uint8_t *line, int32_t len,
                                       int32_t star_pos, uint32_t expected_crc) {
     if (star_pos < 0 || star_pos >= len) return 2;
     const uint8_t *chk_ptr = line + star_pos + 1;

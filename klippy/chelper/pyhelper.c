@@ -10,7 +10,10 @@
 #include <stdio.h> // fprintf
 #include <string.h> // strerror
 #include <time.h> // struct timespec
+#include <math.h> // sqrt
 #include <sys/prctl.h>  // prctl
+#include <sched.h>      // cpu_set_t
+#include <pthread.h>    // pthread_setaffinity_np
 #include "compiler.h" // __visible
 #include "pyhelper.h" // get_monotonic
 
@@ -99,4 +102,63 @@ int __visible
 set_thread_name(char name[16])
 {
     return prctl(PR_SET_NAME, name);
+}
+
+// Set thread affinity to a specific CPU
+int
+set_thread_affinity(pthread_t thread, int cpu_id)
+{
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(cpu_id, &cpuset);
+    return pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
+}
+
+// Set thread affinity to a list of CPUs
+int
+set_thread_affinity_list(pthread_t thread, const int *cpu_list, int count)
+{
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    for (int i = 0; i < count; i++) {
+        CPU_SET(cpu_list[i], &cpuset);
+    }
+    return pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
+}
+
+// ─── Statistical Functions (TUXEDO_RT) ─────────────────────────────────
+
+// Calculate mean of an array of doubles
+double __visible
+stats_mean(const double *data, int32_t count)
+{
+    if (count <= 0) return 0.0;
+    double sum = 0.0;
+    for (int32_t i = 0; i < count; i++) {
+        sum += data[i];
+    }
+    return sum / count;
+}
+
+// Calculate variance of an array of doubles
+double __visible
+stats_variance(const double *data, int32_t count)
+{
+    if (count <= 0) return 0.0;
+    double mean = stats_mean(data, count);
+    double sum_sq = 0.0;
+    for (int32_t i = 0; i < count; i++) {
+        double diff = data[i] - mean;
+        sum_sq += diff * diff;
+    }
+    return sum_sq / count;
+}
+
+// Calculate standard deviation of an array of doubles
+double __visible
+stats_stddev(const double *data, int32_t count)
+{
+    double var = stats_variance(data, count);
+    if (var <= 0.0) return 0.0;
+    return sqrt(var);
 }

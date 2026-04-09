@@ -113,7 +113,10 @@ static __attribute__((hot)) int spi_read(struct conn_manager *cm, double eventti
     qm->notify_id = 0;
     
     /* Encolar en receiver_queue y despertar Python */
-    receive_append_wake(&cm->receiver, &qm->node);
+    struct list_head received;
+    list_init(&received);
+    list_add_tail(&qm->node, &received);
+    receive_append_wake(&cm->receiver, &received);
     
     return ret;
 }
@@ -244,11 +247,11 @@ const conn_backend_ops_t conn_spi_backend = {
 };
 
 /* ─── Exported Functions for Python FFI ───────────────────────────────── */
-__visible void serialqueue_set_spi_params(struct conn_manager *cm,
-                                          uint32_t speed_hz,
-                                          uint8_t mode,
-                                          uint8_t hw_crc,
-                                          uint8_t dma_enabled) {
+__visible void conn_set_spi_params(struct conn_manager *cm,
+                                  uint32_t speed_hz,
+                                  int mode,
+                                  int hw_crc,
+                                  int dma_enabled) {
     if (!cm || !cm->backend_data) return;
     
     spi_backend_data_t *data = cm->backend_data;
@@ -258,14 +261,15 @@ __visible void serialqueue_set_spi_params(struct conn_manager *cm,
         ioctl(cm->fd, SPI_IOC_WR_MAX_SPEED_HZ, &speed_hz);
     }
     
-    if (mode <= 3) {
-        data->mode = mode;
-        ioctl(cm->fd, SPI_IOC_WR_MODE, &mode);
+    if (mode >= 0 && mode <= 3) {
+        uint8_t m = (uint8_t)mode;
+        data->mode = m;
+        ioctl(cm->fd, SPI_IOC_WR_MODE, &m);
     }
     
-    data->hw_crc = hw_crc;
-    data->dma_enabled = dma_enabled;
+    data->hw_crc = (uint8_t)hw_crc;
+    data->dma_enabled = (uint8_t)dma_enabled;
     
-    logging_info("SPI params configured via FFI: %d Hz, mode=%d, crc=%d, dma=%d",
+    logging_info("SPI params configured via FFI: %u Hz, mode=%d, crc=%d, dma=%d",
                 speed_hz, mode, hw_crc, dma_enabled);
 }

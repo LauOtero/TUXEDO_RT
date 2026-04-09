@@ -194,9 +194,9 @@ class SPIConnection(RTConnection):
     
     def setup_serialqueue(self, ffi_lib, serialqueue):
         """Configura parámetros específicos SPI en la cola C"""
-        if hasattr(ffi_lib, 'serialqueue_set_spi_params'):
+        if hasattr(ffi_lib, 'conn_set_spi_params'):
             try:
-                ffi_lib.serialqueue_set_spi_params(
+                ffi_lib.conn_set_spi_params(
                     serialqueue,
                     self.spi_speed,
                     self.spi_mode,
@@ -205,6 +205,6 @@ class SPIConnection(RTConnection):
                 )
                 logging.info("SPI backend params configured in chelper")
             except AttributeError:
-                logging.warning("chelper: serialqueue_set_spi_params not found")
+                logging.warning("chelper: conn_set_spi_params not found")
         else:
             logging.debug("SPI using generic connection path")

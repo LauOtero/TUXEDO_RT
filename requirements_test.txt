@@ -1,0 +1,28 @@
+# ==============================================================================
+# Dependencias de Testing para TUXEDO_RT
+# ==============================================================================
+# Instalar con: pip3 install -r requirements_test.txt
+# ==============================================================================
+
+# Testing Framework
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-timeout>=2.1.0
+pytest-xdist>=3.0.0
+pytest-mock>=3.10.0
+pytest-asyncio>=0.21.0
+
+# Coverage
+coverage>=7.0.0
+
+# Performance Testing
+psutil>=5.9.0
+
+# Mocking
+mock>=5.0.0
+
+# Type Checking (opcional)
+pytest-mypy>=0.10.0
+
+# Parallel Execution
+pytest-xdist>=3.0.0

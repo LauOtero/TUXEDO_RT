@@ -100,14 +100,7 @@ class PT_uint32:
         if msgblock_encode_int is not None:
             msgblock_encode_int(out, v)
             return
-        # Python fallback: bitwise shift VLQ
-        # Handle sign bit for negative integers (Klipper specific VLQ)
-        if v >= 0x60 or v < -0x20:
-            if v >= 0xc000000 or v < -0x4000000: out.append((v>>28) & 0x7f | 0x80)
-            if v >= 0x180000 or v < -0x80000:    out.append((v>>21) & 0x7f | 0x80)
-            if v >= 0x3000 or v < -0x1000:       out.append((v>>14) & 0x7f | 0x80)
-            out.append((v>>7)  & 0x7f | 0x80)
-        out.append(v & 0x7f)
+        raise RuntimeError("TUXEDO_RT: msgblock_encode_int C extension is required for RT determinism.")
 
     def parse(self, s: bytes, pos: int) -> Tuple[int, int]:
         """Parse an integer from the buffer."""
@@ -116,19 +109,7 @@ class PT_uint32:
             if not self.signed:
                 v = int(v & 0xffffffff)
             return v, pos
-        # Python fallback: VLQ parse
-        c = s[pos]
-        pos += 1
-        v = c & 0x7f
-        if (c & 0x60) == 0x60:
-            v |= -0x20
-        while c & 0x80:
-            c = s[pos]
-            pos += 1
-            v = (v << 7) | (c & 0x7f)
-        if not self.signed:
-            v = int(v & 0xffffffff)
-        return v, pos
+        raise RuntimeError("TUXEDO_RT: msgblock_parse_int C extension is required for RT determinism.")
 
 class PT_int32(PT_uint32):
     """Klipper protocol type for signed 32-bit integers."""

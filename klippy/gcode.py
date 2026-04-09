@@ -185,8 +185,8 @@ class GCodeDispatch:
         self._c_parser = None
         self._ffi = None
         try:
-            from .chelper import get_ffi
-            ffi, lib = get_ffi()
+            import chelper
+            ffi, lib = chelper.get_ffi()
             if ffi and hasattr(lib, 'parse_gcode_line_fast'):
                 self._c_parser = lib.parse_gcode_line_fast
                 self._ffi = ffi
@@ -194,7 +194,8 @@ class GCodeDispatch:
             elif ffi and hasattr(lib, 'ultracrc32_compute'):
                 # Fallback: Parser is Python, but we use Hardware CRC
                 logging.info("Hardware CRC available, using Python parser fallback")
-        except Exception:
+        except Exception as e:
+            print("Failed to load C parser:", e)
             pass
 
         # Register built-in commands
@@ -343,18 +344,19 @@ class GCodeDispatch:
 
                 # 2. Extract Command
                 cmd_bytes = ffi.buffer(new_result.cmd, new_result.cmd_len)
-                cmd = cmd_bytes.decode('ascii', 'ignore').strip()
+                cmd = bytes(cmd_bytes).decode('ascii', 'ignore').strip()
                 
                 # 3. Extract Parameters efficiently
                 shared_params.clear()
                 params_len = new_result.params_len
+                param_str = ""
                 if params_len > 0:
                     param_buffer = ffi.buffer(new_result.params, params_len)
                     # Fast split for G-code params (e.g., "X10 Y20" or "P=10")
                     # Note: This is a simplified fast split. 
                     # For complex quoting, fallback to legacy or shlex.
                     try:
-                        param_str = param_buffer.decode('ascii', 'ignore')
+                        param_str = bytes(param_buffer).decode('ascii', 'ignore')
                         for p in param_str.split():
                             if '=' in p:
                                 k, v = p.split('=', 1)
@@ -373,9 +375,10 @@ class GCodeDispatch:
                     gcmd._commandline = origline
                     gcmd._params = dict(shared_params) # Snapshot
                     gcmd._need_ack = need_ack
-                    gcmd._raw_params = None
+                    gcmd._raw_params = param_str.encode('ascii')
                 else:
                     gcmd = GCodeCommand(self, cmd, origline, dict(shared_params), need_ack)
+                    gcmd._raw_params = param_str.encode('ascii')
 
                 # 5. Dispatch
                 handler = gcode_handlers.get(cmd, cmd_default)

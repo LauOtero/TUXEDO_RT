@@ -75,9 +75,10 @@ void conn_get_clock_est(struct conn_manager *cm, struct clock_estimate *ce);
 /* Backend-specific Parameters */
 void conn_set_backend_params(struct conn_manager *cm, const char *key, const void *value, size_t len);
 
-/* CAN/EtherCAT Profile Overrides */
+/* CAN/EtherCAT/SPI Profile Overrides */
 void conn_set_can_params(struct conn_manager *cm, int mode, int retries, int xl_sdt);
 void conn_set_usb_profile(struct conn_manager *cm, int max_pending_blocks);
+void conn_set_spi_params(struct conn_manager *cm, uint32_t speed, int mode, int crc, int dma);
 void conn_set_ethertux_params(struct conn_manager *cm, uint16_t alias, uint16_t position,
                               uint32_t vendor_id, uint32_t product_id,
                               uint32_t cycle_time_ns);
@@ -91,6 +92,9 @@ int conn_set_irq_affinity(struct conn_manager *cm, const int *cpu_list, int coun
 void conn_get_stats(struct conn_manager *cm, char *buf, int len);
 int conn_extract_old(struct conn_manager *cm, int sentq,
                      struct pull_queue_message *q, int max);
+
+/* RTT Statistics (exposed to Python for unified metrics) */
+void conn_get_rtt_stats(struct conn_manager *cm, double *srtt, double *rttvar, double *rto);
 
 #ifdef __cplusplus
 }

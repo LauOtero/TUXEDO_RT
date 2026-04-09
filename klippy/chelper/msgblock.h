@@ -66,7 +66,9 @@ struct clock_estimate {
 uint16_t msgblock_crc16_ccitt(uint8_t *buf, int len);
 int msgblock_check(uint8_t *need_sync, uint8_t *buf, int buf_len);
 uint8_t *msgblock_encode_int(uint8_t *p, uint32_t v);
+int msgblock_encode_int_batch(uint8_t *out, const uint32_t *vals, int count);
 uint32_t msgblock_parse_int(uint8_t **pp);
+int msgblock_parse_int_batch(uint32_t *vals, uint8_t **pp, int count);
 int msgblock_decode(uint32_t *data, int data_len, uint8_t *msg, int msg_len);
 struct queue_message *message_alloc(void);
 struct queue_message *message_fill(uint8_t *data, int len);

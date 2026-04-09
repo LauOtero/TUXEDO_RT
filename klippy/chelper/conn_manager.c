@@ -519,7 +519,7 @@ __visible void conn_get_stats(struct conn_manager *cm, char *buf, int len) {
     pthread_mutex_lock(&cm->lock); pthread_mutex_lock(&cm->tx_sched.lock);
     memcpy(&stats, cm, sizeof(stats));
     pthread_mutex_unlock(&cm->tx_sched.lock); pthread_mutex_unlock(&cm->lock);
-    
+
     snprintf(buf, len, "bytes_write=%u bytes_read=%u bytes_retransmit=%u bytes_invalid=%u "
              "send_seq=%u receive_seq=%u retransmit_seq=%u srtt=%.3f rttvar=%.3f rto=%.3f "
              "ready_bytes=%u upcoming_bytes=%u conn_type=%c",
@@ -529,6 +529,14 @@ __visible void conn_get_stats(struct conn_manager *cm, char *buf, int len) {
              (unsigned int)stats.retransmit_seq, stats.srtt, stats.rttvar, stats.rto,
              (unsigned int)stats.ready_bytes, (unsigned int)stats.tx_sched.upcoming_bytes,
              stats.conn_type);
+}
+
+__visible void conn_get_rtt_stats(struct conn_manager *cm, double *srtt, double *rttvar, double *rto) {
+    pthread_mutex_lock(&cm->lock);
+    if (srtt) *srtt = cm->srtt;
+    if (rttvar) *rttvar = cm->rttvar;
+    if (rto) *rto = cm->rto;
+    pthread_mutex_unlock(&cm->lock);
 }
 
 __visible int conn_extract_old(struct conn_manager *cm, int sentq, struct pull_queue_message *q, int max) {

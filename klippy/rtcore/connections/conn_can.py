@@ -116,10 +116,10 @@ class CANConnection(RTConnection):
         mode_map = {'classic': 0, 'fd_no_brs': 1, 'fd_brs': 2, 'xl': 3}
         mode = mode_map.get(self.canbus_mode.lower(), 0)
         
-        # Asumiendo que existen estas funciones en el FFI (deberían estar expuestas en serialqueue.c)
+        # Asumiendo que existen estas funciones en el FFI (deberían estar expuestas en conn_manager.c)
         try:
-            ffi_lib.serialqueue_set_can_params(serialqueue, mode, self.autoneg_retries, self.xl_sdt)
+            ffi_lib.conn_set_can_params(serialqueue, mode, self.autoneg_retries, self.xl_sdt)
         except AttributeError:
-            logging.warning("chelper: serialqueue_set_can_params not found")
+            logging.warning("chelper: conn_set_can_params not found")
 
 
