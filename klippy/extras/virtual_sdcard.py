@@ -27,6 +27,12 @@ class VirtualSD:
         self.reactor = self.printer.get_reactor()
         self.must_pause_work = self.cmd_from_sd = False
         self.next_file_position = 0
+        self.current_line = ""
+        self.current_line_start = 0
+        self.current_line_end = 0
+        self.last_line = ""
+        self.last_line_start = 0
+        self.last_line_end = 0
         self.work_timer = None
         # Error handling
         gcode_macro = self.printer.load_object(config, 'gcode_macro')
@@ -96,6 +102,14 @@ class VirtualSD:
             'is_active': self.is_active(),
             'file_position': self.file_position,
             'file_size': self.file_size,
+            'next_file_position': self.next_file_position,
+            'cmd_from_sd': self.cmd_from_sd,
+            'current_line': self.current_line,
+            'current_line_start': self.current_line_start,
+            'current_line_end': self.current_line_end,
+            'last_line': self.last_line,
+            'last_line_start': self.last_line_start,
+            'last_line_end': self.last_line_end,
         }
     def file_path(self):
         if self.current_file:
@@ -196,6 +210,41 @@ class VirtualSD:
         self.file_position = 0
         self.file_size = fsize
         self.print_stats.set_current_file(filename)
+    def resume_from_checkpoint(self, file_path, file_position):
+        if self.work_timer is not None:
+            raise self.gcode.error("SD busy")
+        self._reset_file()
+        if not file_path:
+            raise self.gcode.error("Invalid checkpoint file path")
+        checkpoint_path = os.path.normpath(os.path.expanduser(file_path))
+        try:
+            relname = os.path.relpath(checkpoint_path, self.sdcard_dirname)
+        except ValueError:
+            relname = os.path.basename(checkpoint_path)
+        if relname.startswith('..'):
+            raise self.gcode.error("Checkpoint file is outside virtual_sdcard path")
+        try:
+            f = io.open(checkpoint_path, 'r', newline='')
+            f.seek(0, os.SEEK_END)
+            fsize = f.tell()
+            pos = int(file_position)
+            if pos < 0:
+                pos = 0
+            if pos > fsize:
+                pos = fsize
+            f.seek(pos)
+        except Exception:
+            logging.exception("virtual_sdcard checkpoint resume open")
+            raise self.gcode.error("Unable to open checkpoint file")
+        self.current_file = f
+        self.file_size = fsize
+        self.file_position = pos
+        self.next_file_position = pos
+        self.current_line = ""
+        self.current_line_start = 0
+        self.current_line_end = 0
+        self.print_stats.set_current_file(relname)
+        self.do_resume()
     def cmd_M24(self, gcmd):
         # Start/resume SD print
         self.do_resume()
@@ -269,6 +318,9 @@ class VirtualSD:
             else:
                 next_file_position = self.file_position + len(line) + 1
             self.next_file_position = next_file_position
+            self.current_line = line
+            self.current_line_start = self.file_position
+            self.current_line_end = next_file_position
             try:
                 self.gcode.run_script(line)
             except self.gcode.error as e:
@@ -282,6 +334,12 @@ class VirtualSD:
                 logging.exception("virtual_sdcard dispatch")
                 break
             self.cmd_from_sd = False
+            self.last_line = line
+            self.last_line_start = self.current_line_start
+            self.last_line_end = self.current_line_end
+            self.current_line = ""
+            self.current_line_start = 0
+            self.current_line_end = 0
             self.file_position = self.next_file_position
             # Do we need to skip around?
             if self.next_file_position != next_file_position:
@@ -296,6 +354,9 @@ class VirtualSD:
         logging.info("Exiting SD card print (position %d)", self.file_position)
         self.work_timer = None
         self.cmd_from_sd = False
+        self.current_line = ""
+        self.current_line_start = 0
+        self.current_line_end = 0
         if error_message is not None:
             self.print_stats.note_error(error_message)
         elif self.current_file is not None:
