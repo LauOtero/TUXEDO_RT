@@ -646,6 +646,26 @@ class ExtraInterface(ExtraLifecycle):
         finally:
             self._lock.release()
 
+    def register_event_handler(self, event: str, callback: Callable) -> None:
+        """
+        Registra un handler para eventos del sistema Klipper.
+        Eventos soportados: klippy:connect, klippy:shutdown, klippy:disconnect, etc.
+        """
+        try:
+            webhooks = self.printer.lookup_object('webhooks')
+            if webhooks and hasattr(webhooks, 'register_subscription'):
+                webhooks.register_subscription(event, callback)
+            else:
+                # Fallback: registrar directamente en el printer
+                self.printer.register_event_handler(event, callback)
+        except Exception as e:
+            self.logger.warning("Failed to register event handler for %s: %s", event, e)
+            # Intentar registro directo como fallback
+            try:
+                self.printer.register_event_handler(event, callback)
+            except Exception:
+                pass
+
 
 class LegacyPluginAdapter(ExtraInterface):
     """

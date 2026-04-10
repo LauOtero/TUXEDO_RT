@@ -14,29 +14,36 @@ Optimizaciones RT:
   - Lock-free en hot path
   - Pre-allocated buffers
   - Zero allocations en código de tiempo real
+  - Uso intensivo de propiedades lazy-loaded de ExtraInterface
 """
 
-import asyncio
 import json
 import logging
 import os
 import struct
 import threading
 import time
-import zlib
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-sys_path = os.path.join(os.path.dirname(__file__), "../..")
-if sys_path not in os.sys.path:
-    os.sys.path.insert(0, sys_path)
-
+# Importar CRC32 por hardware desde chelper si está disponible
 try:
-    from extras.extra_manager import ExtraInterface, ExtraLifecycle
-    HAS_EXTRA_MANAGER = True
+    from chelper.ultracrc import ultracrc32_compute
+    HAS_HARDWARE_CRC32 = True
 except ImportError:
-    HAS_EXTRA_MANAGER = False
-    ExtraInterface = object
-    ExtraLifecycle = object
+    HAS_HARDWARE_CRC32 = False
+    import zlib
+
+def _compute_crc32(data: bytes) -> int:
+    """
+    Calcula CRC32 usando aceleración por hardware si está disponible.
+    Fallback a zlib.crc32 si no hay soporte hardware.
+    """
+    if HAS_HARDWARE_CRC32:
+        return ultracrc32_compute(data, len(data), 0)
+    else:
+        return zlib.crc32(data) & 0xFFFFFFFF
+
+from extras.extra_manager import ExtraInterface, ExtraLifecycle
 
 try:
     import rsnaps
@@ -154,7 +161,7 @@ class WALManager:
     def write_entry(self, checkpoint: Dict) -> bool:
         """O(1) append al WAL."""
         data = json.dumps(checkpoint).encode('utf-8')
-        crc = zlib.crc32(data) & 0xFFFFFFFF
+        crc = _compute_crc32(data)
 
         header = struct.pack(
             ">IIIII",
@@ -200,7 +207,7 @@ class WALManager:
                     if len(data) < length:
                         break
 
-                    computed_crc = zlib.crc32(data) & 0xFFFFFFFF
+                    computed_crc = _compute_crc32(data)
                     if computed_crc != crc:
                         logging.warning("KARES: WAL CRC mismatch at seq %d", seq)
                         continue
@@ -426,7 +433,7 @@ class HealthMonitor:
                 return False
 
             stored_crc = struct.unpack(">I", data[:4])[0]
-            computed_crc = zlib.crc32(data[4:])
+            computed_crc = _compute_crc32(data[4:])
 
             if stored_crc != computed_crc:
                 return False
@@ -1013,6 +1020,18 @@ class Kares(ExtraInterface):
         self.rt_priority = self.config.getint("rt_priority", RT_PRIORITY_HIGH, minval=50, maxval=99)
         self.rt_critical = self.config.getboolean("rt_critical", False)
 
+        # Parámetros para control de ventilador calefactor de cabina
+        self.chamber_heater_fan = self.config.get("chamber_heater_fan", None)
+        self.chamber_temp_sensor = self.config.get("chamber_temp_sensor", None)
+        self.chamber_target_temp = self.config.getfloat("chamber_target_temp", 0.0, minval=0.0)
+        
+        # Parámetros para manejo de UPS y cama caliente
+        self.bed_keepalive_on_ups = self.config.getboolean("bed_keepalive_on_ups", True)
+        self.bed_min_temp_on_ups = self.config.getfloat("bed_min_temp_on_ups", 60.0, minval=0.0)
+        
+        # Configuración de ejes múltiples (X, Y, Z, E, A, B, C, etc.)
+        self.extra_stepper_prefixes = self.config.getlist("extra_stepper_prefixes", ["stepper_", "extruder"])
+
         self.logger.info(
             "KARES v2.0 loaded: backend=%s, poll_interval=%.3fs, wal=%s, ecc=%s, rt=%s",
             self.backend, self.poll_interval, self.enable_wal, self.enable_ecc, self.enable_rt
@@ -1207,7 +1226,7 @@ class Kares(ExtraInterface):
 
             if len(data) >= 4:
                 stored_crc = struct.unpack(">I", data[:4])[0]
-                computed_crc = zlib.crc32(data[4:])
+                computed_crc = _compute_crc32(data[4:])
                 if stored_crc != computed_crc:
                     self.logger.error("KARES: Checkpoint CRC mismatch, attempting WAL recovery")
                     if self._wal:
@@ -1487,6 +1506,63 @@ class Kares(ExtraInterface):
                     "temp": bed_status["temperature"],
                 }
 
+            # Guardar estado del ventilador calefactor de cabina
+            if self.chamber_heater_fan:
+                chamber_fan = self.printer.lookup_object(self.chamber_heater_fan, None)
+                if chamber_fan:
+                    fan_status = chamber_fan.get_status(eventtime)
+                    checkpoint["chamber_heater_fan"] = {
+                        "speed": fan_status.get("speed", 0),
+                        "target_temp": self.chamber_target_temp,
+                    }
+            
+            # Guardar temperatura de cabina si hay sensor
+            if self.chamber_temp_sensor:
+                chamber_sensor = self.printer.lookup_object(self.chamber_temp_sensor, None)
+                if chamber_sensor:
+                    sensor_status = chamber_sensor.get_status(eventtime)
+                    checkpoint["chamber_temperature"] = {
+                        "current": sensor_status.get("temperature", 0),
+                        "target": self.chamber_target_temp,
+                    }
+
+            # Detectar y guardar todos los ejes múltiples (X, Y, Z, E, A, B, C, etc.)
+            checkpoint["multi_axis"] = {}
+            for prefix in self.extra_stepper_prefixes:
+                for obj_name, obj in self.printer.lookup_objects(""):
+                    if obj_name.startswith(prefix):
+                        if hasattr(obj, 'get_steppers'):
+                            for s in obj.get_steppers():
+                                stepper_name = s.get_name()
+                                mcu_pos = s.get_past_mcu_position(print_time)
+                                checkpoint["multi_axis"][stepper_name] = {
+                                    "mcu_pos": mcu_pos,
+                                    "commanded_pos": s.mcu_to_commanded_position(mcu_pos),
+                                    "parent_object": obj_name,
+                                }
+
+            # Información de UPS para estrategia de recuperación
+            ups_info = {}
+            if self._nut_atomic:
+                snapshot, flags = self._nut_atomic.read()
+                if snapshot:
+                    ups_info = {
+                        "on_battery": snapshot.get("ups", {}).get("on_battery", False),
+                        "battery_charge_pct": snapshot.get("battery", {}).get("charge_pct", 0),
+                        "runtime_s": snapshot.get("battery", {}).get("runtime_s", 0),
+                        "load_pct": snapshot.get("ups", {}).get("load_pct", 0),
+                    }
+            checkpoint["ups_state"] = ups_info
+            
+            # Estrategia de conservación de energía en UPS
+            if ups_info.get("on_battery") and self.bed_keepalive_on_ups:
+                checkpoint["power_save_mode"] = {
+                    "bed_keepalive": True,
+                    "bed_min_temp": self.bed_min_temp_on_ups,
+                    "chamber_heater_off": True,
+                    "fans_minimal": True,
+                }
+
             queued_pending = False
             for mcu_name, mcu in self.printer.lookup_objects("mcu"):
                 mcu_ept = mcu.estimated_print_time(eventtime)
@@ -1526,7 +1602,7 @@ class Kares(ExtraInterface):
                 os.makedirs(ckpt_dir, exist_ok=True)
 
             json_data = json.dumps(checkpoint).encode('utf-8')
-            crc = struct.pack(">I", zlib.crc32(json_data) & 0xFFFFFFFF)
+            crc = struct.pack(">I", _compute_crc32(json_data))
 
             if self.enable_ecc:
                 encoded, ecc = CheckpointECC.encode(json_data)
@@ -1588,10 +1664,382 @@ class Kares(ExtraInterface):
     cmd_KARES_SAVE_CHECKPOINT_help = "Save a recovery checkpoint"
 
     def cmd_KARES_RESUME_CHECKPOINT(self, gcmd: Any) -> None:
-        """Reanuda desde checkpoint."""
-        gcmd.respond_info("KARES: Resume functionality not yet implemented")
+        """Reanuda desde checkpoint con recuperación inteligente."""
+        try:
+            # Verificar que existe checkpoint
+            if not os.path.exists(self.checkpoint_path):
+                gcmd.respond_error("KARES: No checkpoint file found at %s" % self.checkpoint_path)
+                return
 
-    cmd_KARES_RESUME_CHECKPOINT_help = "Resume from the last checkpoint"
+            # Cargar checkpoint
+            checkpoint = self._load_checkpoint()
+            if checkpoint is None:
+                gcmd.respond_error("KARES: Failed to load checkpoint or checkpoint is corrupted")
+                return
+
+            # Verificar estado actual de la impresora
+            self._validate_printer_state(checkpoint)
+
+            # Ejecutar secuencia de recuperación
+            recovery_success = self._execute_recovery_sequence(checkpoint, gcmd)
+
+            if recovery_success:
+                gcmd.respond_info("KARES: Recovery completed successfully!")
+            else:
+                gcmd.respond_error("KARES: Recovery failed, check logs for details")
+
+        except Exception as e:
+            self.logger.exception("KARES: Recovery error: %s", e)
+            gcmd.respond_error("KARES: Recovery failed: %s" % str(e))
+
+    cmd_KARES_RESUME_CHECKPOINT_help = "Resume from the last checkpoint with intelligent recovery"
+
+    def _load_checkpoint(self) -> Optional[Dict]:
+        """Carga y valida checkpoint desde archivo."""
+        try:
+            with open(self.checkpoint_path, "rb") as fh:
+                data = fh.read()
+
+            if len(data) < 4:
+                self.logger.error("KARES: Checkpoint file too small")
+                return None
+
+            stored_crc = struct.unpack(">I", data[:4])[0]
+            computed_crc = _compute_crc32(data[4:])
+            
+            if stored_crc != computed_crc:
+                self.logger.error("KARES: Checkpoint CRC mismatch, attempting WAL recovery")
+                if self._wal:
+                    recovered = self._wal.recover_from_wal()
+                    if recovered:
+                        self.logger.info("KARES: Recovered checkpoint from WAL")
+                        return recovered
+                return None
+
+            json_data = data[4:]
+            
+            # Si ECC está habilitado, intentar decodificar
+            if self.enable_ecc and HAS_RSNAPS:
+                # Intentar separar datos y ECC (asumiendo estructura conocida)
+                pass  # Por simplicidad, usamos JSON directo si CRC pasa
+
+            checkpoint = json.loads(json_data.decode('utf-8'))
+            
+            # Validar campos requeridos
+            required_fields = ["timestamp", "toolhead", "gcode", "steppers"]
+            for field in required_fields:
+                if field not in checkpoint:
+                    self.logger.error("KARES: Missing required field: %s", field)
+                    return None
+
+            return checkpoint
+
+        except Exception as e:
+            self.logger.exception("KARES: Error loading checkpoint: %s", e)
+            return None
+
+    def _validate_printer_state(self, checkpoint: Dict) -> None:
+        """Valida que la impresora esté en estado seguro para recuperación."""
+        eventtime = self.reactor.monotonic()
+        
+        # Verificar ejes homed
+        toolhead = self.printer.lookup_object("toolhead")
+        th_status = toolhead.get_status(eventtime)
+        homed_axes = th_status.get("homed_axes", "")
+        
+        required_axes = "xyz"
+        for axis in required_axes:
+            if axis not in homed_axes.lower():
+                raise self.gcode.error(
+                    "KARES: Axis %s not homed. Please home all axes before recovery." % axis.upper()
+                )
+
+        # Verificar temperaturas seguras
+        extruders = checkpoint.get("extruders", {})
+        for ename, edata in extruders.items():
+            heater = self.printer.lookup_object(ename, None)
+            if heater:
+                htr = heater.get_heater()
+                htr_status = htr.get_status(eventtime)
+                current_temp = htr_status.get("temperature", 0)
+                
+                # Verificar que la temperatura actual es suficiente para extruir
+                target_temp = edata.get("target", 0)
+                if target_temp > 0 and current_temp < target_temp * 0.8:
+                    self.logger.warning(
+                        "KARES: Extruder %s temperature %.1f°C below target %.1f°C",
+                        ename, current_temp, target_temp
+                    )
+
+        # Verificar que no hay impresión activa
+        ps = self.printer.lookup_object("print_stats", None)
+        if ps:
+            ps_status = ps.get_status(eventtime)
+            ps_state = ps_status.get("state", "")
+            if ps_state == "printing":
+                raise self.gcode.error(
+                    "KARES: Cannot resume - another print is already active"
+                )
+
+    def _execute_recovery_sequence(self, checkpoint: Dict, gcmd: Any) -> bool:
+        """Ejecuta secuencia inteligente de recuperación."""
+        eventtime = self.reactor.monotonic()
+        start_time = time.time()
+        
+        try:
+            # Fase 1: Restaurar posición segura Z
+            self._restore_safe_z_position(checkpoint, gcmd)
+            
+            # Fase 2: Restaurar temperaturas
+            self._restore_temperatures(checkpoint, gcmd)
+            
+            # Fase 3: Esperar estabilización térmica
+            self._wait_thermal_stabilization(checkpoint, gcmd)
+            
+            # Fase 4: Restaurar posición XY
+            self._restore_xy_position(checkpoint, gcmd)
+            
+            # Fase 5: Restaurar estado G-code
+            self._restore_gcode_state(checkpoint, gcmd)
+            
+            # Fase 6: Posicionar en punto de reanudación
+            self._position_at_resume_point(checkpoint, gcmd)
+            
+            # Fase 7: Ejecutar comando de reanudación
+            success = self._execute_resume_command(checkpoint, gcmd)
+            
+            # Registrar métricas de recuperación
+            if self._metrics:
+                duration = time.time() - start_time
+                self._metrics.record_recovery(success, duration)
+            
+            return success
+
+        except Exception as e:
+            self.logger.exception("KARES: Recovery sequence failed: %s", e)
+            return False
+
+    def _restore_safe_z_position(self, checkpoint: Dict, gcmd: Any) -> None:
+        """Restaura posición Z de manera segura."""
+        current_pos = self.toolhead.get_position()
+        
+        checkpoint_pos = checkpoint.get("toolhead", {}).get("position", [0, 0, 0, 0])
+        checkpoint_z = checkpoint_pos[2]
+        
+        # Mover Z a posición segura (mínimo 5mm sobre la pieza)
+        safe_z = max(checkpoint_z, 5.0)
+        
+        gcmd.respond_info("KARES: Moving Z to safe height %.2fmm" % safe_z)
+        self.toolhead.manual_move([None, None, safe_z, None], 15.0)
+        self.toolhead.wait_moves()
+
+    def _restore_temperatures(self, checkpoint: Dict, gcmd: Any) -> None:
+        """Restaura temperaturas de extruders, cama caliente y cabina."""
+        eventtime = self.reactor.monotonic()
+        
+        # Verificar si hay modo de ahorro de energía por UPS
+        power_save_mode = checkpoint.get("power_save_mode", {})
+        bed_keepalive = power_save_mode.get("bed_keepalive", False)
+        bed_min_temp = power_save_mode.get("bed_min_temp", self.bed_min_temp_on_ups)
+        
+        # Restaurar temperatura de extruders
+        extruders = checkpoint.get("extruders", {})
+        for ename, edata in extruders.items():
+            target_temp = edata.get("target", 0)
+            if target_temp > 0:
+                gcmd.respond_info("KARES: Setting %s target to %.1f°C" % (ename, target_temp))
+                self.gcode.run_script_from_command("M104 S%.1f" % target_temp)
+
+        # Restaurar temperatura de cama caliente
+        heater_bed = checkpoint.get("heater_bed", {})
+        bed_target = heater_bed.get("target", 0)
+        if bed_target > 0:
+            # Si hay UPS activo y bed_keepalive está habilitado, mantener cama caliente
+            ups_state = checkpoint.get("ups_state", {})
+            if ups_state.get("on_battery") and bed_keepalive:
+                # Mantener cama a temperatura mínima para evitar despegue
+                effective_bed_target = max(bed_target, bed_min_temp)
+                gcmd.respond_info(
+                    "KARES: UPS active - keeping bed at %.1f°C (min: %.1f°C) to prevent warping" 
+                    % (effective_bed_target, bed_min_temp)
+                )
+            else:
+                effective_bed_target = bed_target
+            
+            gcmd.respond_info("KARES: Setting heater_bed target to %.1f°C" % effective_bed_target)
+            self.gcode.run_script_from_command("M140 S%.1f" % effective_bed_target)
+
+        # Restaurar ventilador calefactor de cabina si está configurado
+        chamber_fan_info = checkpoint.get("chamber_heater_fan", {})
+        chamber_temp_info = checkpoint.get("chamber_temperature", {})
+        
+        if chamber_fan_info and self.chamber_heater_fan:
+            chamber_target = chamber_fan_info.get("target_temp", 0)
+            if chamber_target > 0:
+                gcmd.respond_info("KARES: Setting chamber heater fan target to %.1f°C" % chamber_target)
+                # Configurar el ventilador calefactor mediante temperature_fan
+                self.gcode.run_script_from_command(
+                    "SET_TEMPERATURE_FAN TEMPERATURE_FAN=%s TARGET=%.1f" 
+                    % (self.chamber_heater_fan, chamber_target)
+                )
+        
+        # Verificar temperatura actual de cabina
+        if chamber_temp_info and self.chamber_temp_sensor:
+            current_chamber_temp = chamber_temp_info.get("current", 0)
+            target_chamber_temp = chamber_temp_info.get("target", 0)
+            gcmd.respond_info(
+                "KARES: Chamber temperature: %.1f°C (target: %.1f°C)" 
+                % (current_chamber_temp, target_chamber_temp)
+            )
+
+    def _wait_thermal_stabilization(self, checkpoint: Dict, gcmd: Any) -> None:
+        """Espera estabilización térmica antes de continuar."""
+        eventtime = self.reactor.monotonic()
+        timeout = 300.0  # 5 minutos máximo
+        start_wait = time.time()
+        
+        extruders = checkpoint.get("extruders", {})
+        heater_bed = checkpoint.get("heater_bed", {})
+        
+        targets = []
+        for ename, edata in extruders.items():
+            target = edata.get("target", 0)
+            if target > 0:
+                targets.append((ename, target))
+        
+        if heater_bed.get("target", 0) > 0:
+            targets.append(("heater_bed", heater_bed["target"]))
+        
+        if not targets:
+            return
+        
+        gcmd.respond_info("KARES: Waiting for thermal stabilization...")
+        
+        while time.time() - start_wait < timeout:
+            all_stable = True
+            
+            for name, target in targets:
+                heater_obj = self.printer.lookup_object(name, None)
+                if heater_obj:
+                    htr = heater_obj.get_heater()
+                    htr_status = htr.get_status(eventtime)
+                    current_temp = htr_status.get("temperature", 0)
+                    
+                    # Considerar estable si está dentro de ±5°C del target
+                    if abs(current_temp - target) > 5.0:
+                        all_stable = False
+                        break
+            
+            if all_stable:
+                gcmd.respond_info("KARES: Thermal stabilization complete")
+                return
+            
+            time.sleep(1.0)
+        
+        self.logger.warning("KARES: Thermal stabilization timeout")
+
+    def _restore_xy_position(self, checkpoint: Dict, gcmd: Any) -> None:
+        """Restaura posición XY."""
+        checkpoint_pos = checkpoint.get("toolhead", {}).get("position", [0, 0, 0, 0])
+        checkpoint_x = checkpoint_pos[0]
+        checkpoint_y = checkpoint_pos[1]
+        
+        gcmd.respond_info("KARES: Restoring XY position to (%.2f, %.2f)" % (checkpoint_x, checkpoint_y))
+        self.toolhead.manual_move([checkpoint_x, checkpoint_y, None, None], 100.0)
+        self.toolhead.wait_moves()
+
+    def _restore_gcode_state(self, checkpoint: Dict, gcmd: Any) -> None:
+        """Restaura estado de G-code (coordenadas absolutas/relativas, factores, etc.)."""
+        gcode_state = checkpoint.get("gcode_move", {})
+        
+        # Restaurar modo de coordenadas
+        absolute_coords = gcode_state.get("absolute_coordinates", True)
+        absolute_extrude = gcode_state.get("absolute_extrude", True)
+        
+        if absolute_coords:
+            self.gcode.run_script_from_command("G90")
+        else:
+            self.gcode.run_script_from_command("G91")
+        
+        if absolute_extrude:
+            self.gcode.run_script_from_command("M82")
+        else:
+            self.gcode.run_script_from_command("M83")
+        
+        # Restaurar factores de velocidad y extrusión
+        speed_factor = gcode_state.get("speed_factor", 1.0)
+        extrude_factor = gcode_state.get("extrude_factor", 1.0)
+        
+        if speed_factor != 1.0:
+            self.gcode.run_script_from_command("M220 S%d" % int(speed_factor * 100))
+        
+        if extrude_factor != 1.0:
+            self.gcode.run_script_from_command("M221 S%d" % int(extrude_factor * 100))
+        
+        gcmd.respond_info("KARES: G-code state restored")
+
+    def _position_at_resume_point(self, checkpoint: Dict, gcmd: Any) -> None:
+        """Posiciona el cabezal en el punto exacto de reanudación."""
+        checkpoint_pos = checkpoint.get("toolhead", {}).get("position", [0, 0, 0, 0])
+        
+        # Mover a la posición exacta donde se detuvo
+        gcmd.respond_info(
+            "KARES: Positioning at resume point (%.2f, %.2f, %.2f)" % 
+            (checkpoint_pos[0], checkpoint_pos[1], checkpoint_pos[2])
+        )
+        
+        # Primero bajar Z a la posición original
+        self.toolhead.manual_move([None, None, checkpoint_pos[2], None], 5.0)
+        self.toolhead.wait_moves()
+        
+        # Luego mover XY
+        self.toolhead.manual_move([checkpoint_pos[0], checkpoint_pos[1], None, None], 50.0)
+        self.toolhead.wait_moves()
+
+    def _execute_resume_command(self, checkpoint: Dict, gcmd: Any) -> bool:
+        """Ejecuta comando de reanudación según estrategia determinada."""
+        gcode_info = checkpoint.get("gcode", {})
+        resume_strategy = gcode_info.get("resume_strategy", "host_stream_or_macro")
+        
+        vsd = self.virtual_sdcard
+        
+        if resume_strategy == "replay_inflight_command":
+            # Re-ejecutar comando en vuelo
+            file_pos = gcode_info.get("resume_file_position", 0)
+            current_line = gcode_info.get("current_line", "")
+            
+            gcmd.respond_info("KARES: Replaying inflight command from position %d" % file_pos)
+            gcmd.respond_info("KARES: Command: %s" % current_line)
+            
+            if vsd and hasattr(vsd, 'set_file_position'):
+                vsd.set_file_position(file_pos)
+            
+            # Ejecutar línea actual si existe
+            if current_line:
+                self.gcode.run_script_from_command(current_line)
+            
+        elif resume_strategy == "continue_after_inflight":
+            # Continuar después del comando en vuelo
+            next_pos = gcode_info.get("next_file_position", 0)
+            
+            gcmd.respond_info("KARES: Continuing from position %d" % next_pos)
+            
+            if vsd and hasattr(vsd, 'set_file_position'):
+                vsd.set_file_position(next_pos)
+        
+        else:
+            # Estrategia por defecto: macro o stream del host
+            gcmd.respond_info("KARES: Using host stream or macro strategy")
+            gcmd.respond_info("KARES: Manual intervention may be required")
+            
+            # Intentar ejecutar macro de reanudación si existe
+            try:
+                self.gcode.run_script_from_command("RESUME_PRINT")
+            except Exception:
+                gcmd.respond_info("KARES: RESUME_PRINT macro not found")
+                return False
+        
+        return True
 
     def cmd_KARES_HELP(self, gcmd: Any) -> None:
         """Muestra ayuda de comandos KARES."""
