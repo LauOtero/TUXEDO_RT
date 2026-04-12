@@ -1,5 +1,15 @@
-```
-# Python cache files
+```markdown
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Dependencies
 __pycache__/
 *.pyc
 *.pyo
@@ -8,43 +18,24 @@ __pycache__/
 # Build artifacts
 build/
 dist/
+*.egg-info/
 
-# Virtual environments
-venv/
-.venv/
-env/
-
-# Logs
-*.log
-
-# Coverage reports
-.coverage
-htmlcov/
-coverage/
-
-# Temporary files
-*.tmp
-*.swp
-*.swo
-
-# OS generated files
-.DS_Store
-Thumbs.db
-
-# Environment variables
-.env
-.env.local
-*.env.*
-
-# IDE specific
+# Editors
 .vscode/
 .idea/
 
-# MyPy cache
-.mypy_cache/
+# OS
+.DS_Store
+Thumbs.db
 
-# Pytest cache
-.pytest_cache/
+# Coverage
+.coverage
+coverage/
+htmlcov/
 
-# Original rules preserved
+# Python specific
+*.py[cod]
+*$py.class
+*.so
+.Python
 ```
