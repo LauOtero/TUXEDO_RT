@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 KARES v2.1 — Deterministic Recovery System with UPS monitoring via Moonraker.
 
@@ -23,10 +24,17 @@ Optimizaciones RT:
 import json
 import logging
 import os
+import shutil
 import struct
+import sys
 import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
+
+# Forzar inclusión del directorio raíz en sys.path para importaciones absolutas consistentes
+sys_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if sys_path not in sys.path:
+    sys.path.insert(0, sys_path)
 
 # Importar CRC32 por hardware desde chelper si está disponible
 try:
@@ -46,7 +54,17 @@ def _compute_crc32(data: bytes) -> int:
     else:
         return zlib.crc32(data) & 0xFFFFFFFF
 
-from extras.extra_manager import ExtraInterface, ExtraLifecycle
+try:
+    from extras.extra_manager import ExtraInterface, ExtraLifecycle
+    HAS_EXTRA_MANAGER = True
+except ImportError:
+    try:
+        from .extra_manager import ExtraInterface, ExtraLifecycle
+        HAS_EXTRA_MANAGER = True
+    except ImportError:
+        HAS_EXTRA_MANAGER = False
+        ExtraInterface = object
+        ExtraLifecycle = object
 
 try:
     import rsnaps
@@ -65,6 +83,31 @@ try:
     HAS_PROMETHEUS = True
 except ImportError:
     HAS_PROMETHEUS = False
+
+
+# =============================================================================
+# Excepciones
+# =============================================================================
+
+class NUTProtocolError(Exception):
+    """Error base para protocolo NUT."""
+    pass
+
+class NUTConnectionError(NUTProtocolError):
+    """Error de conexión con servidor NUT."""
+    pass
+
+class NUTAuthError(NUTProtocolError):
+    """Error de autenticación con servidor NUT."""
+    pass
+
+class NUTDataError(NUTProtocolError):
+    """Error en los datos recibidos de NUT."""
+    pass
+
+class NUTTimeoutError(NUTProtocolError):
+    """Timeout en comunicación con NUT."""
+    pass
 
 
 # =============================================================================
@@ -392,7 +435,7 @@ class HealthMonitor:
             self._health_issues.append("checkpoint_corrupted")
             self._attempt_repair()
 
-        if self._kares.backend == "nut":
+        if self._kares.backend == "moonraker_nut":
             if not self._nut_is_connected():
                 self._health_issues.append("nut_disconnected")
                 self._attempt_nut_reconnect()
@@ -455,10 +498,11 @@ class HealthMonitor:
         logging.info("KARES: Attempting NUT reconnection")
 
     def _has_disk_space(self) -> bool:
-        """Verifica si hay espacio en disco suficiente."""
+        """Verifica si hay espacio en disco suficiente (multiplataforma)."""
         try:
-            stat = os.statvfs(os.path.dirname(self._kares.checkpoint_path) or ".")
-            free_mb = (stat.f_bavail * stat.f_frsize) / (1024 * 1024)
+            path = os.path.dirname(self._kares.checkpoint_path) or "."
+            total, used, free = shutil.disk_usage(path)
+            free_mb = free / (1024 * 1024)
             return free_mb > 100
         except Exception:
             return True
@@ -487,9 +531,6 @@ class HealthMonitor:
 # =============================================================================
 # AtomicSnapshot — Lock-free handoff entre NUT thread y reactor
 # =============================================================================
-
-_FLAG_OB = 0x1
-_FLAG_LB = 0x2
 
 
 class AtomicSnapshot:
@@ -667,7 +708,7 @@ class Kares(ExtraInterface):
         self._ups_connected: bool = False
         
         # AtomicSnapshot para lock-free reading del estado UPS
-        self._nut_atomic: Optional[AtomicSnapshot] = None
+        self._nut_atomic = AtomicSnapshot()
 
         self._wal: Optional[WALManager] = None
         if self.enable_wal:
@@ -750,7 +791,6 @@ class Kares(ExtraInterface):
         1. Eventos push desde Moonraker (preferido)
         2. Polling HTTP al endpoint /printer/ups/status (fallback)
         """
-        self._nut_atomic = AtomicSnapshot()
         self._ups_connected = True  # Asumimos conexión inicial
         self._ups_last_update = time.time()
         

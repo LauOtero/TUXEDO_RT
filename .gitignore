@@ -1,0 +1,204 @@
+# ==============================================================================
+# TUXEDO_RT — .gitignore
+# Proyecto híbrido Python + C (fork de Klipper) · Linux / WSL / Windows
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Python
+# ------------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+ENV/
+tuxedo_venv/
+.python-version
+
+# Herramientas de test / cobertura / tipado
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+.pytype/
+.pyre/
+htmlcov/
+nosetests.xml
+*.mo
+
+# ------------------------------------------------------------------------------
+# C / CFFI / compilación de chelper
+# ------------------------------------------------------------------------------
+*.o
+*.a
+*.la
+*.lo
+*.dylib
+*.dll
+*.exp
+*.lib
+*.pdb
+*.idb
+*.ilk
+*.obj
+*.mod
+*.smod
+*.gcda
+*.gcno
+*.gcov
+*.i
+*.s
+*.su
+*.out
+*.exe
+
+# Artefactos CFFI generados
+klippy/chelper/*_cffi.c
+klippy/chelper/__pycache__/
+klippy/chelper/build/
+klippy/chelper/*.so
+klippy/chelper/*.pyd
+
+# ------------------------------------------------------------------------------
+# Klipper / TUXEDO_RT — datos de ejecución
+# ------------------------------------------------------------------------------
+*.log
+klippy.log
+klippy.log.*
+printer-*.log
+logs/
+log/
+out/
+.kinematics/
+data/
+saved_variables.cfg
+.virtual_sdcard/
+moonraker.db
+moonraker-sql.db
+namespaces/
+
+# Perfiles y artefactos de optimización generados en runtime
+.tuxedo_rt/*.tmp
+.tuxedo_rt/*.log
+.tuxedo_rt/latency_*.bin
+.tuxedo_rt/checkpoint_*.bin
+.tuxedo_rt/wal_*.log
+
+# Material de trabajo temporal (no versionado)
+temp/
+
+# ------------------------------------------------------------------------------
+# Exportaciones de benchmark y resultados intermedios
+# ------------------------------------------------------------------------------
+tests/benchmark_output.txt
+tests/benchmark_results.txt
+docs/benchmark_results.md.tmp
+*.prof
+*.lprof
+*.cprofile
+*.pstats.s*
+
+# ------------------------------------------------------------------------------
+# Sistema operativo
+# ------------------------------------------------------------------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+.directory
+*~
+.fuse_hidden*
+.nfs*
+
+# ------------------------------------------------------------------------------
+# Editores / IDE
+# ------------------------------------------------------------------------------
+.vscode/*
+!.vscode/settings.json.example
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*.swn
+*.tmp
+*.bak
+*.orig
+*.rej
+*#
+.#*
+\#*\#
+.vim/
+.netrwhist
+tags
+TAGS
+Session.vim
+.project
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# ------------------------------------------------------------------------------
+# Secretos y configuración local (NUNCA versionar)
+# ------------------------------------------------------------------------------
+.env
+.env.*
+*.env.local
+secrets.json
+credentials.json
+moonraker.secrets
+printer.cfg.local
+printer.local.cfg
+
+# ------------------------------------------------------------------------------
+# Excepciones (archivos que SÍ deben versionarse)
+# ------------------------------------------------------------------------------
+!klippy/locales/*.json
+!klippy/extras/locales/*.json
+!.trae/rules/*.md
+!requirements.txt
+!requirements_test.txt
+!pytest.ini
+!docs/**/*.md
+!tests/mock_configs/*.cfg
+!*.cfg
+!*.example.conf
